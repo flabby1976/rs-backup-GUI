@@ -2,10 +2,13 @@ import wx
 import wx.adv
 
 import sys
+import time
+
+import os
 
 import subprocess 
 
-from threading import Timer
+from threading import Thread
 
 TRAY_TOOLTIP = 'rs-backup-GUI'
 TRAY_ICON = 'Flag-red.ico'
@@ -27,41 +30,44 @@ GNU General Public License for more details.\n\
 You should have received a copy of the GNU General Public License\n\
 along with this program.  If not, see <https://www.gnu.org/licenses/>"
 
-class RepeatedTimer(object):
-    def __init__(self, interval, function, *args, **kwargs):
-        self._timer     = None
-        self.interval   = interval
-        self.function   = function
-        self.args       = args
-        self.kwargs     = kwargs
-        self.is_running = False
-        self.start()
+def kill(proc_pid):
+    command = ["c:\\cygwin64\\bin\\bash", "-lc", "kill -HUP -"+str(proc_pid)]
+    print command
+    subprocess.check_call(command, shell=True)
+     
+def MyWorker():
 
-    def _run(self):
-        self.is_running = False
-        self.start()
-        self.function(*self.args, **self.kwargs)
+    global kill_thread
 
-    def start(self):
-        print('starting ...')
-        if not self.is_running:
-            self._timer = Timer(self.interval, self._run)
-            self._timer.start()
-            self.is_running = True
-
-    def stop(self):
-        self._timer.cancel()
-        self.is_running = False
-
-def run_command(command):
+    command = ["c:\\cygwin64\\bin\\bash", "-lc", "time rs-backup-run -v --log-level=6"]
+    logfile = 'myfile.log'
     startupinfo = subprocess.STARTUPINFO()
     startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-    with open('logfile.log', "w") as outfile:
-        p = subprocess.Popen(command,
-                         stdout=outfile,
-                         stderr=subprocess.STDOUT,
-                         startupinfo=startupinfo)
-    return p
+    print 'Hello'
+
+    while not kill_thread:
+
+        with open(logfile, "w") as outfile:
+            p = subprocess.Popen(command,
+                     stdout=outfile,
+                     stderr=subprocess.STDOUT,
+                     startupinfo=startupinfo)
+
+        print 'running'
+        print ("My pid is {}").format(p.pid)
+        while (p.poll() is None):
+            time.sleep(1)
+            if kill_thread:
+                kill(p.pid)
+                return
+
+        print 'waiting'
+        for i in range(600):
+#            print ("waiting {}").format(i)
+            time.sleep(1)
+            if kill_thread:
+                return
+
 
 def create_menu_item(menu, label, func):
     item = wx.MenuItem(menu, -1, label)
@@ -69,28 +75,12 @@ def create_menu_item(menu, label, func):
     menu.Append(item)
     return item
 
-class MyFrame(wx.Frame):
-    def __init__(self,parent,id,title, text):
-        wx.Frame.__init__(self,parent,id,title)
-        self.parent = parent
-        self.initialize(text)
-        self.Bind(wx.EVT_CLOSE, self.onClose)
-
-    def initialize(self, text):
-        sizer = wx.GridBagSizer()
-        self.entry = wx.StaticText(self,-1,label=text)
-        sizer.Add(self.entry,(0,0),(1,1),wx.EXPAND)
-        self.SetSizerAndFit(sizer)
-        self.Show(True)
-        
-    def onClose(self, event):
-        self.Hide()
-
 class MyForm(wx.Frame):
  
-    def __init__(self):
-        wx.Frame.__init__(self, root, 
-                          title="Debug Window")
+    def __init__(self, parent, title):
+        wx.Frame.__init__(self, parent, 
+                          title=title,
+                          style=wx.DEFAULT_FRAME_STYLE | wx.STAY_ON_TOP)
  
         self.Bind(wx.EVT_CLOSE, self.onClose)
 
@@ -121,6 +111,15 @@ class TaskBarIcon(wx.adv.TaskBarIcon):
         wx.adv.TaskBarIcon.__init__(self)
         self.set_icon(TRAY_ICON)
         self.Bind(wx.adv.EVT_TASKBAR_LEFT_DOWN, self.on_left_down)
+        self.init_debug_window()
+        self.init_backup_thread()
+
+    def init_debug_window(self):
+        self.debug_window = MyForm(root, "Debug Window")
+        
+    def init_backup_thread(self):
+        self.backup_thread = Thread(target=MyWorker)
+        self.backup_thread.start()
 
     def CreatePopupMenu(self):
         #This is bound by default to right mouse key click on the icon
@@ -141,40 +140,41 @@ class TaskBarIcon(wx.adv.TaskBarIcon):
         print 'Tray icon was left-clicked.'
 
     def on_hello(self, event):
-    #       frame.Show(True)
         print 'Hello, world!'
 
     def on_debug(self, event):
-        frame.Show(True)
+        self.debug_window.Show(True)
         print 'Hello, world!'
 
     def on_configure(self, event):
         print 'Configure me'
-        command = ["c:\\cygwin64\\bin\\bash", "-lc", "time rs-backup-run -v --log-level=6"]
-        logfile = 'myfile.log'
-#        myprocess = run_command(command, logfile)
-        self.p = RepeatedTimer(600,  run_command, ["c:\\cygwin64\\bin\\bash", "-lc", "time rs-backup-run -v --log-level=6"])
         
     def on_about(self, event):
         about  = Myname + "\n" + Myversion + "\n" + Myauthor + "\n" + MyNotice
         wx.MessageBox(message=about, caption="About", style=wx.OK | wx.ICON_INFORMATION)
 
     def on_exit(self, event):
-        wx.CallAfter(root.Destroy)
-        wx.CallAfter(self.Destroy)
-        self.p.stop()
+
+        global kill_thread
+    
+        kill_thread = True
+        self.backup_thread.join()
         print 'Goodbye'
 
+        wx.CallAfter(self.debug_window.Destroy)
+        wx.CallAfter(self.Destroy)
+        wx.CallAfter(root.Destroy)
+        
 def hello(name):
     print "Hello %s!" % name
 
+kill_thread = False;
 
 app = wx.App(False)
 root = wx.Frame(None, -1, "top") # This is the top-level window.
 root.Show(False)     # Don't show it
 
-frame = MyForm()
+backup_icon = TaskBarIcon()
 
-TaskBarIcon()
 app.MainLoop()
 
