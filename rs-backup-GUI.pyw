@@ -111,7 +111,7 @@ class MyForm(wx.Frame):
         panel.SetSizer(sizer)
  
         # redirect text here
-        sys.stdout=log
+#        sys.stdout=log
  
     def onClose(self, event):
         self.Hide()
@@ -139,6 +139,10 @@ class TaskBarIcon(wx.adv.TaskBarIcon):
 
     def on_left_down(self, event):
         print 'Tray icon was left-clicked.'
+        if self.p.poll:
+            print 'Running'
+        else
+            print "Stopped"
 
     def on_hello(self, event):
     #       frame.Show(True)
@@ -150,10 +154,10 @@ class TaskBarIcon(wx.adv.TaskBarIcon):
 
     def on_configure(self, event):
         print 'Configure me'
-        command = ["c:\\cygwin64\\bin\\bash", "-lc", "time rs-backup-run -v --log-level=6"]
-        logfile = 'myfile.log'
-#        myprocess = run_command(command, logfile)
-        self.p = RepeatedTimer(600,  run_command, ["c:\\cygwin64\\bin\\bash", "-lc", "time rs-backup-run -v --log-level=6"])
+##        command = ["c:\\cygwin64\\bin\\bash", "-lc", "time rs-backup-run -v --log-level=6"]
+##        logfile = 'myfile.log'
+##        myprocess = run_command(command, logfile)
+        self.p = RepeatedTimer(600,  run_command, ["c:\\cygwin64\\bin\\bash", "-lc", "time rs-backup-run -v --log-level=6"])     
         
     def on_about(self, event):
         about  = Myname + "\n" + Myversion + "\n" + Myauthor + "\n" + MyNotice
