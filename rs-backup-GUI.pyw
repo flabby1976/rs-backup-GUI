@@ -32,18 +32,27 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>"
 
 def kill(proc_pid):
     command = ["c:\\cygwin64\\bin\\bash", "-lc", "kill -HUP -"+str(proc_pid)]
-    print command
-    subprocess.check_call(command, shell=True)
+    subprocess.call(command, shell=True)
+
+def getreturncode(filename):
+    try:
+        with open(filename, "r") as infile:
+            r = infile.readline()
+    except IOError:
+        r = "Fail"
+    return r
+                  
      
 def MyWorker():
 
     global kill_thread
 
-    command = ["c:\\cygwin64\\bin\\bash", "-lc", "time rs-backup-run -v --log-level=6"]
+    backup_freq = 600 #seconds
+
+    command = ["c:\\cygwin64\\bin\\bash", "-lc", "(rs-backup-run -v --log-level=6) && echo 'OK' > /tmp/try.txt || echo 'Not OK' > /tmp/try.txt"]
     logfile = 'myfile.log'
     startupinfo = subprocess.STARTUPINFO()
     startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-    print 'Hello'
 
     while not kill_thread:
 
@@ -53,17 +62,26 @@ def MyWorker():
                      stderr=subprocess.STDOUT,
                      startupinfo=startupinfo)
 
-        print 'running'
-        print ("My pid is {}").format(p.pid)
+        epoch_time = time.time()
+        localtime = time.asctime( time.localtime(epoch_time) )
+        print '\nBackup running: '+localtime
+        print ("- PID is {}").format(p.pid)
         while (p.poll() is None):
             time.sleep(1)
             if kill_thread:
+                print 'Trying to kill backup ...'
                 kill(p.pid)
-                return
 
-        print 'waiting'
-        for i in range(600):
-#            print ("waiting {}").format(i)
+        epoch_time = time.time()
+        localtime = time.asctime( time.localtime(epoch_time) )
+        print 'Backup finished: '+localtime
+        returncode = getreturncode('c:\\cygwin64\\tmp\\try.txt')
+        print ("- exit code was: {}").format(returncode)
+        
+        nexttime = time.asctime( time.localtime(epoch_time + backup_freq) )
+        print '\nWaiting ..'
+        print '- next Backup : '+nexttime
+        for i in range(backup_freq):
             time.sleep(1)
             if kill_thread:
                 return
