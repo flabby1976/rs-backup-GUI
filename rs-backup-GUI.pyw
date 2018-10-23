@@ -10,6 +10,8 @@ import subprocess
 
 from threading import Thread
 
+from ConfigFileEditor import ConfigFileEditPopup
+
 TRAY_TOOLTIP = 'rs-backup-GUI'
 TRAY_ICON = 'Flag-red.ico'
 
@@ -30,31 +32,41 @@ GNU General Public License for more details.\n\
 You should have received a copy of the GNU General Public License\n\
 along with this program.  If not, see <https://www.gnu.org/licenses/>"
 
-def kill(proc_pid):
-    command = ["c:\\cygwin64\\bin\\bash", "-lc", "kill -HUP -"+str(proc_pid)]
-    subprocess.call(command, shell=True)
-
-def getreturncode(filename):
-    try:
-        with open(filename, "r") as infile:
-            r = infile.readline()
-    except IOError:
-        r = "Fail"
-    return r
-                  
      
 def MyWorker():
+
+# Kill all cygwin processes with gpid = proc_pid, using SIGHUP
+    def kill(proc_pid):
+        command = ["c:/cygwin64/bin/bash", "-lc", "ps | grep " +str(proc_pid) + " | grep rsync | awk '{print $1;}' | xargs kill -HUP"]
+        subprocess.call(command, shell=True)
+
+    def getreturncode(filename):
+        try:
+            with open(filename, "r") as infile:
+                lines = infile.read().splitlines()
+                r = lines[-1]
+        except IOError:
+            r = "Fail"
+        return r
 
     global kill_thread
 
     backup_freq = 600 #seconds
 
-    command = ["c:\\cygwin64\\bin\\bash", "-lc", "(rs-backup-run -v --log-level=6) && echo 'OK' > /tmp/try.txt || echo 'Not OK' > /tmp/try.txt"]
-    logfile = 'myfile.log'
+    logfile = 'c:/cygwin64/tmp/try.log'
+
+##    if os.path.exists(logfile):
+##        print 'deleting old logfile'
+##        os.remove(logfile)
+##
+    command = ["c:/cygwin64/bin/bash", "-lc", "(rs-backup-run -v) && echo 'OK' || echo 'Not OK' "]
+
     startupinfo = subprocess.STARTUPINFO()
     startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
 
     while not kill_thread:
+
+##        print command
 
         with open(logfile, "w") as outfile:
             p = subprocess.Popen(command,
@@ -62,30 +74,31 @@ def MyWorker():
                      stderr=subprocess.STDOUT,
                      startupinfo=startupinfo)
 
-        epoch_time = time.time()
-        localtime = time.asctime( time.localtime(epoch_time) )
-        print '\nBackup running: '+localtime
-        print ("- PID is {}").format(p.pid)
-        while (p.poll() is None):
-            time.sleep(1)
-            if kill_thread:
-                print 'Trying to kill backup ...'
-                kill(p.pid)
+            epoch_time = time.time()
+            localtime = time.asctime( time.localtime(epoch_time) )
+            print '\nBackup running: '+localtime
+            print ("- PID is {}").format(p.pid)
+            while (p.poll() is None):
+                time.sleep(1)
+                if kill_thread:
+                    print 'Trying to kill backup ...'
+                    kill(p.pid)
 
         epoch_time = time.time()
         localtime = time.asctime( time.localtime(epoch_time) )
         print 'Backup finished: '+localtime
-        returncode = getreturncode('c:\\cygwin64\\tmp\\try.txt')
+        returncode = getreturncode(logfile)
         print ("- exit code was: {}").format(returncode)
         
-        nexttime = time.asctime( time.localtime(epoch_time + backup_freq) )
-        print '\nWaiting ..'
-        print '- next Backup : '+nexttime
-        for i in range(backup_freq):
-            time.sleep(1)
-            if kill_thread:
-                return
-
+        if not kill_thread:
+            epoch_time = time.time()
+            nexttime = time.asctime( time.localtime(epoch_time + backup_freq) )
+            print '\nWaiting ..'
+            print '- next Backup : '+nexttime
+            for i in range(backup_freq):
+                time.sleep(1)
+                if kill_thread:
+                    return
 
 def create_menu_item(menu, label, func):
     item = wx.MenuItem(menu, -1, label)
@@ -119,10 +132,18 @@ class MyForm(wx.Frame):
         panel.SetSizer(sizer)
  
         # redirect text here
-        sys.stdout=log
+##        self.saveout=sys.stdout
+##        self.saveerr=sys.stderr
+##        sys.stdout=log
+##        sys.stderr=log
  
     def onClose(self, event):
         self.Hide()
+
+    def ShutDown(self):
+##        sys.stdout=self.saveout
+##        sys.stderr=self.saveerr
+        self.Destroy
 
 class TaskBarIcon(wx.adv.TaskBarIcon):
     def __init__(self):
@@ -162,10 +183,10 @@ class TaskBarIcon(wx.adv.TaskBarIcon):
 
     def on_debug(self, event):
         self.debug_window.Show(True)
-        print 'Hello, world!'
 
     def on_configure(self, event):
         print 'Configure me'
+        ConfigFileEditPopup('C:/cygwin64/etc/rs-backup/client-config')
         
     def on_about(self, event):
         about  = Myname + "\n" + Myversion + "\n" + Myauthor + "\n" + MyNotice
@@ -176,23 +197,32 @@ class TaskBarIcon(wx.adv.TaskBarIcon):
         global kill_thread
     
         kill_thread = True
-        self.backup_thread.join()
-        print 'Goodbye'
+        print 'Waiting for backup thread to finish ....'
+        self.backup_thread.join(10)
 
-        wx.CallAfter(self.debug_window.Destroy)
-        wx.CallAfter(self.Destroy)
-        wx.CallAfter(root.Destroy)
+        if not self.backup_thread.isAlive():
+            print 'Done!'
+        else:
+            print "Woops - didn't finish in time"
+
+        print 'Goodbye'
+        self.debug_window.ShutDown()
+        self.Destroy()
+        root.Destroy()
         
 def hello(name):
     print "Hello %s!" % name
 
 kill_thread = False;
 
-app = wx.App(False)
+app = wx.App()
+
 root = wx.Frame(None, -1, "top") # This is the top-level window.
 root.Show(False)     # Don't show it
 
 backup_icon = TaskBarIcon()
-
 app.MainLoop()
+
+
+
 
