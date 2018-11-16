@@ -64,21 +64,29 @@ class ConfigFileEditPopup(wx.Frame):
         sizer.Add(buttonOk, pos=(row+1, 3))
         sizer.Add(buttonCancel, pos=(row+1, 4), flag=wx.RIGHT|wx.BOTTOM, border=10)
 
-        buttonOk.Bind(wx.EVT_BUTTON,self.Save)      
+        buttonOk.Bind(wx.EVT_BUTTON,self.OK)      
         buttonCancel.Bind(wx.EVT_BUTTON,self.Cancel)
         
         sizer.Fit(panel)
         panel.SetSizer(sizer)
-#        panel.Fit()
+        panel.Fit()
 
-    def Save(self, event):
+    def OK(self, event):
         for key in self.config.scalars:
             self.config[key]=self.ents[key].GetValue()
-        self.config.write()
-        self.Quit()
+        if self.Verify():
+            self.Save()
+        else:
+            print('Config Error!')
 
     def Cancel(self, event):
-        print 'Cancel!'
+        self.Quit()
+
+    def Verify(self):
+        return True
+
+    def Save(self):
+        self.config.write()
         self.Quit()
 
     def Quit(self):
