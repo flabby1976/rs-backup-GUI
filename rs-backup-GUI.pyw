@@ -50,12 +50,14 @@ GNU General Public License for more details.\n\
 \n\
 You should have received a copy of the GNU General Public License\n\
 along with this program.  If not, see <https://www.gnu.org/licenses/>"
-     
+
+devnull = open(os.devnull, 'wb')
+
 class BackupWorker(object):
 
     def __init__(self):
         self.kill_thread = False
-        self.logfile = 'c:/cygwin64/tmp/try.log'
+        self.logfile = os.path.expanduser('~/.rs-backup/rs-backup-run.log')
         self.status = 'Initialising'
 
 # Kill cygwin rsync process with gpid = proc_pid, using SIGHUP
@@ -68,28 +70,35 @@ class BackupWorker(object):
 
         backup_freq = 600 #seconds
 
-        command = ["c:/cygwin64/bin/bash", "-lc", "(rs-backup-run -v) && echo 'OK' || echo 'Not OK' "]
-
+        runcommand = ["c:/cygwin64/bin/bash", "-lc", "(rs-backup-run -v) && echo 'OK' || echo 'Not OK' "]
         startupinfo = subprocess.STARTUPINFO()
         startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
 
         while not self.kill_thread:
 
             with open(self.logfile, "w") as outfile:
-                p = subprocess.Popen(command,
+                p = subprocess.Popen(runcommand,
+                         stdin=devnull,
                          stdout=outfile,
                          stderr=subprocess.STDOUT,
                          startupinfo=startupinfo)
+##                         shell=True)
 
                 stime = time.time()
                 print ("Backup running: PID is {}").format(p.pid)
+                killcommand = ["c:/cygwin64/bin/bash", "-lc", "ps | grep " +str(p.pid) + " | grep rsync | awk '{print $1;}' | xargs kill -HUP"]
                 while (p.poll() is None):
                     ntime = time.time()
                     self.status = 'Running '+ str(int(ntime-stime))
                     time.sleep(1)
                     if self.kill_thread:
                         logger.debug( 'Trying to kill rsync process ...')
-                        self._killrsync(p.pid)
+                        subprocess.call(killcommand,
+                                 stdin=devnull,
+                                 stdout=outfile,
+                                 stderr=subprocess.STDOUT,
+                                 startupinfo=startupinfo)
+##                                 shell=True)
 
             logger.debug( ("Backup finished: elapsed time was: {}").format(ntime-stime))
             try:
@@ -176,7 +185,7 @@ class MyForm(wx.Frame):
     def readlog(self):
         self.log.Clear()
         try:
-            with open('C:/cygwin64/home/arobins/out.log', "r") as infile:
+            with open(mainlogfile, "r") as infile:
                 lines = infile.read()
                 self.log.WriteText(lines)
         except IOError:
@@ -243,9 +252,12 @@ class TaskBarIcon(wx.adv.TaskBarIcon):
         self.Destroy()
         root.Destroy()
 
+mainlogfile = os.path.expanduser('~/.rs-backup/rs-backup-GUI.log')
+print mainlogfile
+
 logging.basicConfig(level=logging.DEBUG,
                     format='%(asctime)s %(levelname)s %(message)s',
-                    filename='C:/cygwin64/home/arobins/out.log',
+                    filename=mainlogfile,
                     filemode='w')
 
 logger = logging.getLogger()

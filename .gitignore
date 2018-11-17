@@ -1,2 +1,12 @@
 
 *.pyc
+build/rs-backup-GUI/PKG-00.pkg
+*.toc
+*.pyz
+*.manifest
+build/rs-backup-GUI/xref-rs-backup-GUI.html
+build/rs-backup-GUI/warn-rs-backup-GUI.txt
+dist/Flag-red.ico
+dist/rs-backup-GUI.exe
+dist/try.log
+*.pyc
