@@ -61,7 +61,7 @@ class BackupWorker(object):
         self.status = 'Initialising'
 
 # Kill cygwin rsync process with gpid = proc_pid, using SIGHUP
-# DANGER, WILL ROBINSON!! Need to ensure 'proc_pid' is not malicous!
+# DANGER, WILL ROBINSON!! Need to ensure 'proc_pid' is not malicious!
     def _killrsync(self, proc_pid):
         command = ["c:/cygwin64/bin/bash", "-lc", "ps | grep " +str(proc_pid) + " | grep rsync | awk '{print $1;}' | xargs kill -HUP"]
         subprocess.call(command, shell=True)
@@ -116,7 +116,7 @@ class BackupWorker(object):
             else:
                 logger.error('Backup completed with errors')
                 logger.error(("Exit code was: {}").format(returncode))
-                logger.error('Backup process log file follows - \n\n.........\n'+all_lines+'.........')
+                logger.error('Backup process log file follows - \n.........\n'+all_lines+'.........')
             
             ntime = time.time()
             if not self.kill_thread:
