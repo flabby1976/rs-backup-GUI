@@ -12,7 +12,7 @@ from threading import Thread
 
 from ConfigFileEditor import ConfigFileEditPopup
 
-import logging
+import logging, logging.handlers
 
 class LoggerWriter(object):
     def __init__(self, writer):
@@ -35,7 +35,7 @@ TRAY_TOOLTIP = 'rs-backup-GUI'
 TRAY_ICON = 'Flag-red.ico'
 
 Myname = "rs-backup-GUI: A GUI front-end for rs_backup_suite"
-Myversion = "Version 0.1"
+Myversion = "Version 0.1.0+development"
 Myauthor = "Copyright (C) 2018 Andrew Robinson"
 
 MyNotice = "\nThis program is free software: you can redistribute it and/or modify \n\
@@ -85,7 +85,7 @@ class BackupWorker(object):
 ##                         shell=True)
 
                 stime = time.time()
-                print ("Backup running: PID is {}").format(p.pid)
+                logger.info( ("Backup running: PID is {}").format(p.pid) )
                 killcommand = ["c:/cygwin64/bin/bash", "-lc", "ps | grep " +str(p.pid) + " | grep rsync | awk '{print $1;}' | xargs kill -HUP"]
                 while (p.poll() is None):
                     ntime = time.time()
@@ -123,7 +123,7 @@ class BackupWorker(object):
                 wtime = int(max(0, backup_freq - (ntime-stime))+0.5)
                 stime = ntime + wtime
                 nexttime = time.asctime( time.localtime(stime) )
-                print 'Waiting: Next backup at '+nexttime
+                logger.info( 'Waiting: Next backup at '+nexttime )
                 for i in range(wtime):
                     ntime = time.time()
                     self.status = 'Waiting '+ str(int(stime-ntime))
@@ -143,9 +143,9 @@ class BackupWorker(object):
         self.backup_thread.join(10)
 
         if not self.backup_thread.isAlive():
-            print 'Done!'
+            logger.debug( 'Done!' )
         else:
-            print "Woops - didn't finish in time"
+            logger.warning( "Woops - didn't finish in time" )
 
         self.status = "Stopped"
  
@@ -230,7 +230,7 @@ class TaskBarIcon(wx.adv.TaskBarIcon):
         self.SetIcon(icon, TRAY_TOOLTIP)
 
     def on_left_down(self, event):
-        print MyWorker.status
+        logger.info( MyWorker.status )
 
     def on_hello(self, event):
         print 'Hello, world!'
@@ -253,16 +253,19 @@ class TaskBarIcon(wx.adv.TaskBarIcon):
         root.Destroy()
 
 mainlogfile = os.path.expanduser('~/.rs-backup/rs-backup-GUI.log')
-print mainlogfile
-
-logging.basicConfig(level=logging.DEBUG,
-                    format='%(asctime)s %(levelname)s %(message)s',
-                    filename=mainlogfile,
-                    filemode='w')
 
 logger = logging.getLogger()
-sys.stderr = LoggerWriter(logger.error)
-sys.stdout = LoggerWriter(logger.info)
+logger.setLevel(logging.DEBUG)
+
+formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
+
+ch = logging.handlers.TimedRotatingFileHandler(mainlogfile, when='midnight', interval=1, backupCount=7)
+ch.setLevel(logging.DEBUG)
+ch.setFormatter(formatter)
+logger.addHandler(ch)
+
+##sys.stderr = LoggerWriter(logger.error)
+##sys.stdout = LoggerWriter(logger.info)
 
 MyWorker = BackupWorker()
 
