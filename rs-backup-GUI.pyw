@@ -3,6 +3,9 @@ import wx.adv
 
 import sys
 import time
+import datetime
+
+import warnings
 
 import os
 
@@ -52,11 +55,13 @@ You should have received a copy of the GNU General Public License\n\
 along with this program.  If not, see <https://www.gnu.org/licenses/>"
 
 devnull = open(os.devnull, 'wb')
+mainlogfile = os.path.expanduser('~/.rs-backup/rs-backup-GUI.log')
 
 class BackupWorker(object):
 
-    def __init__(self):
+    def __init__(self, mainlogfile):
         self.kill_thread = False
+        self.mainlogfile = mainlogfile
         self.logfile = os.path.expanduser('~/.rs-backup/rs-backup-run.log')
         self.status = 'Initialising'
 
@@ -67,6 +72,19 @@ class BackupWorker(object):
         subprocess.call(command, shell=True)
 
     def backup_run(self):
+
+        self.logger = logging.getLogger('Main_Logger')
+        self.logger.setLevel(logging.DEBUG)
+
+        formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
+
+        self.ch = logging.handlers.RotatingFileHandler(self.mainlogfile, backupCount=7)
+        self.ch.setLevel(logging.DEBUG)
+        self.ch.setFormatter(formatter)
+        self.logger.addHandler(self.ch)
+        self.next_rotate = datetime.datetime.now() + datetime.timedelta(hours=24)
+
+        sys.stderr = LoggerWriter(self.logger.error)
 
         backup_freq = 600 #seconds
 
@@ -85,14 +103,14 @@ class BackupWorker(object):
 ##                         shell=True)
 
                 stime = time.time()
-                logger.info( ("Backup running: PID is {}").format(p.pid) )
+                self.logger.info( ("Backup running: PID is {}").format(p.pid) )
                 killcommand = ["c:/cygwin64/bin/bash", "-lc", "ps | grep " +str(p.pid) + " | grep rsync | awk '{print $1;}' | xargs kill -HUP"]
                 while (p.poll() is None):
                     ntime = time.time()
                     self.status = 'Running '+ str(int(ntime-stime))
                     time.sleep(1)
                     if self.kill_thread:
-                        logger.debug( 'Trying to kill rsync process ...')
+                        self.logger.debug( 'Trying to kill rsync process ...')
                         subprocess.call(killcommand,
                                  stdin=devnull,
                                  stdout=outfile,
@@ -100,7 +118,7 @@ class BackupWorker(object):
                                  startupinfo=startupinfo)
 ##                                 shell=True)
 
-            logger.debug( ("Backup finished: elapsed time was: {}").format(ntime-stime))
+            self.logger.debug( ("Backup finished: elapsed time was: {}").format(ntime-stime))
             try:
                 all_lines = ''
                 with open(self.logfile, "r") as infile:
@@ -111,22 +129,31 @@ class BackupWorker(object):
                 returncode = "Fail"
 
             if returncode =='OK':
-                logger.info('Backup completed successfully')
-                logger.debug('Backup process log file follows - \n.........\n'+all_lines+'.........')
+                self.logger.info('Backup completed successfully')
+                self.logger.debug('Backup process log file follows - \n.........\n'+all_lines+'.........')
             else:
-                logger.error('Backup completed with errors')
-                logger.error(("Exit code was: {}").format(returncode))
-                logger.error('Backup process log file follows - \n.........\n'+all_lines+'.........')
+                self.logger.error('Backup completed with errors')
+                self.logger.error(("Exit code was: {}").format(returncode))
+                self.logger.error('Backup process log file follows - \n.........\n'+all_lines+'.........')
             
             ntime = time.time()
             if not self.kill_thread:
                 wtime = int(max(0, backup_freq - (ntime-stime))+0.5)
                 stime = ntime + wtime
                 nexttime = time.asctime( time.localtime(stime) )
-                logger.info( 'Waiting: Next backup at '+nexttime )
+                self.logger.info( 'Waiting: Next backup at '+nexttime )
+##                warnings.warn("Fake fatal error!! Wooooo!")
+##                print >> sys.stderr, "Fake Error ...."
                 for i in range(wtime):
                     ntime = time.time()
                     self.status = 'Waiting '+ str(int(stime-ntime))
+                    n = datetime.datetime.now()
+                    if n>self.next_rotate:
+                        sys.stderr = sys.__stderr__
+                        self.logger.debug('Rotating')
+                        self.next_rotate = self.next_rotate + datetime.timedelta(hours=24)
+                        self.ch.doRollover()
+                        sys.stderr = LoggerWriter(self.logger.error)
                     time.sleep(1)
                     if self.kill_thread:
                         return
@@ -138,14 +165,14 @@ class BackupWorker(object):
 
     def stop(self):
         self.kill_thread = True
-        logger.warning('Backup abort requested!')
-        logger.debug('Waiting for backup thread to finish ....')
+        self.logger.warning('Backup abort requested!')
+        self.logger.debug('Waiting for backup thread to finish ....')
         self.backup_thread.join(10)
 
         if not self.backup_thread.isAlive():
-            logger.debug( 'Done!' )
+            self.logger.debug( 'Done!' )
         else:
-            logger.warning( "Woops - didn't finish in time" )
+            self.logger.warning( "Woops - didn't finish in time" )
 
         self.status = "Stopped"
  
@@ -230,7 +257,7 @@ class TaskBarIcon(wx.adv.TaskBarIcon):
         self.SetIcon(icon, TRAY_TOOLTIP)
 
     def on_left_down(self, event):
-        logger.info( MyWorker.status )
+        MyWorker.logger.info( MyWorker.status )
 
     def on_hello(self, event):
         print 'Hello, world!'
@@ -239,7 +266,7 @@ class TaskBarIcon(wx.adv.TaskBarIcon):
         self.debug_window.Show(True)
 
     def on_configure(self, event):
-        logger.debug( 'Configure me')
+        MyWorker.logger.debug( 'Configure me')
         ConfigFileEditPopup('C:/cygwin64/etc/rs-backup/client-config')
         
     def on_about(self, event):
@@ -252,22 +279,18 @@ class TaskBarIcon(wx.adv.TaskBarIcon):
         self.Destroy()
         root.Destroy()
 
-mainlogfile = os.path.expanduser('~/.rs-backup/rs-backup-GUI.log')
+errlogger = logging.getLogger('Error_logger')
+errlogger.setLevel(logging.ERROR)
+formatter = logging.Formatter('%(message)s')
+fh = logging.FileHandler('error.log')
+fh.setLevel(logging.ERROR)
+fh.setFormatter(formatter)
+errlogger.addHandler(fh)
 
-logger = logging.getLogger()
-logger.setLevel(logging.DEBUG)
+MyWorker = BackupWorker(mainlogfile)
 
-formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
-
-ch = logging.handlers.TimedRotatingFileHandler(mainlogfile, when='midnight', interval=1, backupCount=7)
-ch.setLevel(logging.DEBUG)
-ch.setFormatter(formatter)
-logger.addHandler(ch)
-
-##sys.stderr = LoggerWriter(logger.error)
+##sys.stderr = LoggerWriter(errlogger.error)
 ##sys.stdout = LoggerWriter(logger.info)
-
-MyWorker = BackupWorker()
 
 app = wx.App()
 
@@ -275,6 +298,7 @@ root = wx.Frame(None, -1, "top") # This is the top-level window.
 root.Show(False)     # Don't show it
 
 backup_icon = TaskBarIcon()
+
 app.MainLoop()
 
 
