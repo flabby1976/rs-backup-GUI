@@ -10,3 +10,4 @@ dist/Flag-red.ico
 dist/rs-backup-GUI.exe
 dist/try.log
 *.pyc
+rs-backup-GUI.spec
