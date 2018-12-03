@@ -5,7 +5,7 @@ import sys
 import time
 import datetime
 
-import warnings
+import tempfile
 
 import os
 
@@ -62,26 +62,19 @@ class BackupWorker(object):
     def __init__(self, mainlogfile):
         self.kill_thread = False
         self.mainlogfile = mainlogfile
-        self.logfile = os.path.expanduser('~/.rs-backup/rs-backup-run.log')
         self.status = 'Initialising'
 
-# Kill cygwin rsync process with gpid = proc_pid, using SIGHUP
-# DANGER, WILL ROBINSON!! Need to ensure 'proc_pid' is not malicious!
-    def _killrsync(self, proc_pid):
-        command = ["c:/cygwin64/bin/bash", "-lc", "ps | grep " +str(proc_pid) + " | grep rsync | awk '{print $1;}' | xargs kill -HUP"]
-        subprocess.call(command, shell=True)
-
     def backup_run(self):
-
         self.logger = logging.getLogger('Main_Logger')
         self.logger.setLevel(logging.DEBUG)
 
         formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
 
-        self.ch = logging.handlers.RotatingFileHandler(self.mainlogfile, backupCount=7)
-        self.ch.setLevel(logging.DEBUG)
-        self.ch.setFormatter(formatter)
-        self.logger.addHandler(self.ch)
+        handler = logging.handlers.RotatingFileHandler(self.mainlogfile, backupCount=7)
+        handler.setLevel(logging.DEBUG)
+        handler.setFormatter(formatter)
+        
+        self.logger.addHandler(handler)
         self.next_rotate = datetime.datetime.now() + datetime.timedelta(hours=24)
 
         sys.stderr = LoggerWriter(self.logger.error)
@@ -94,45 +87,47 @@ class BackupWorker(object):
 
         while not self.kill_thread:
 
-            with open(self.logfile, "w") as outfile:
+            with tempfile.TemporaryFile() as outfile:
+                self.logger.debug(outfile.name)
                 p = subprocess.Popen(runcommand,
                          stdin=devnull,
                          stdout=outfile,
                          stderr=subprocess.STDOUT,
                          startupinfo=startupinfo)
-##                         shell=True)
 
                 stime = time.time()
+                backup_icon.show_balloon('Info', 'Backup starting', wx.ICON_INFORMATION)
                 self.logger.info( ("Backup running: PID is {}").format(p.pid) )
-                killcommand = ["c:/cygwin64/bin/bash", "-lc", "ps | grep " +str(p.pid) + " | grep rsync | awk '{print $1;}' | xargs kill -HUP"]
                 while (p.poll() is None):
                     ntime = time.time()
                     self.status = 'Running '+ str(int(ntime-stime))
                     time.sleep(1)
                     if self.kill_thread:
                         self.logger.debug( 'Trying to kill rsync process ...')
+                        killcommand = ["c:/cygwin64/bin/bash", "-lc", "ps | grep " +str(p.pid) + " | grep rsync | awk '{print $1;}' | xargs kill -HUP"]
                         subprocess.call(killcommand,
                                  stdin=devnull,
                                  stdout=outfile,
                                  stderr=subprocess.STDOUT,
                                  startupinfo=startupinfo)
-##                                 shell=True)
 
-            self.logger.debug( ("Backup finished: elapsed time was: {}").format(ntime-stime))
-            try:
+                self.logger.debug( ("Backup finished: elapsed time was: {}").format(ntime-stime))
                 all_lines = ''
-                with open(self.logfile, "r") as infile:
-                    all_lines = infile.read()
+                try:
+                    outfile.seek(0)
+                    all_lines = outfile.read()
                     lines = all_lines.splitlines()
                     returncode = lines[-1]
-            except IOError:
-                returncode = "Fail"
+                except IOError:
+                    returncode = "Fail"
 
             if returncode =='OK':
                 self.logger.info('Backup completed successfully')
+                backup_icon.show_balloon('Success', 'Backup completed successfully', wx.ICON_INFORMATION)
                 self.logger.debug('Backup process log file follows - \n.........\n'+all_lines+'.........')
             else:
                 self.logger.error('Backup completed with errors')
+                backup_icon.show_balloon('Error', 'Backup completed with errors', wx.ICON_ERROR)
                 self.logger.error(("Exit code was: {}").format(returncode))
                 self.logger.error('Backup process log file follows - \n.........\n'+all_lines+'.........')
             
@@ -142,17 +137,15 @@ class BackupWorker(object):
                 stime = ntime + wtime
                 nexttime = time.asctime( time.localtime(stime) )
                 self.logger.info( 'Waiting: Next backup at '+nexttime )
-##                warnings.warn("Fake fatal error!! Wooooo!")
-##                print >> sys.stderr, "Fake Error ...."
                 for i in range(wtime):
                     ntime = time.time()
                     self.status = 'Waiting '+ str(int(stime-ntime))
                     n = datetime.datetime.now()
                     if n>self.next_rotate:
                         sys.stderr = sys.__stderr__
-                        self.logger.debug('Rotating')
+                        self.logger.info('Rotating logfile')
                         self.next_rotate = self.next_rotate + datetime.timedelta(hours=24)
-                        self.ch.doRollover()
+                        handler.doRollover()
                         sys.stderr = LoggerWriter(self.logger.error)
                     time.sleep(1)
                     if self.kill_thread:
@@ -176,12 +169,6 @@ class BackupWorker(object):
 
         self.status = "Stopped"
  
-
-def create_menu_item(menu, label, func):
-    item = wx.MenuItem(menu, -1, label)
-    menu.Bind(wx.EVT_MENU, func, id=item.GetId())
-    menu.Append(item)
-    return item
 
 class MyForm(wx.Frame):
  
@@ -227,6 +214,12 @@ class MyForm(wx.Frame):
     def ShutDown(self):
         self.Destroy
 
+def create_menu_item(menu, label, func):
+    item = wx.MenuItem(menu, -1, label)
+    menu.Bind(wx.EVT_MENU, func, id=item.GetId())
+    menu.Append(item)
+    return item
+
 class TaskBarIcon(wx.adv.TaskBarIcon):
     def __init__(self):
         wx.adv.TaskBarIcon.__init__(self)
@@ -244,13 +237,20 @@ class TaskBarIcon(wx.adv.TaskBarIcon):
     def CreatePopupMenu(self):
         #This is bound by default to right mouse key click on the icon
         menu = wx.Menu()
-        create_menu_item(menu, 'Configure...', self.on_configure)
+        configmenu = wx.Menu()
+        menu.AppendSubMenu(configmenu, 'Configure...')
         menu.AppendSeparator()
         create_menu_item(menu, 'Show debug log', self.on_debug)
         menu.AppendSeparator()
         create_menu_item(menu, 'About...', self.on_about)
         create_menu_item(menu, 'Exit', self.on_exit)
+
+        create_menu_item(configmenu, 'Configure rs_backup_run', self.on_configure)
+        
         return menu
+
+    def show_balloon(self, title, text, flags = wx.ICON_INFORMATION):
+        self.ShowBalloon(title, text, flags)
 
     def set_icon(self, path):
         icon = wx.Icon(wx.IconLocation(path))
@@ -264,6 +264,7 @@ class TaskBarIcon(wx.adv.TaskBarIcon):
 
     def on_debug(self, event):
         self.debug_window.Show(True)
+        self.debug_window.readlog()
 
     def on_configure(self, event):
         MyWorker.logger.debug( 'Configure me')
@@ -279,18 +280,8 @@ class TaskBarIcon(wx.adv.TaskBarIcon):
         self.Destroy()
         root.Destroy()
 
-errlogger = logging.getLogger('Error_logger')
-errlogger.setLevel(logging.ERROR)
-formatter = logging.Formatter('%(message)s')
-fh = logging.FileHandler('error.log')
-fh.setLevel(logging.ERROR)
-fh.setFormatter(formatter)
-errlogger.addHandler(fh)
 
 MyWorker = BackupWorker(mainlogfile)
-
-##sys.stderr = LoggerWriter(errlogger.error)
-##sys.stdout = LoggerWriter(logger.info)
 
 app = wx.App()
 
