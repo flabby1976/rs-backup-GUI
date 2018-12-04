@@ -88,7 +88,6 @@ class BackupWorker(object):
         while not self.kill_thread:
 
             with tempfile.TemporaryFile() as outfile:
-                self.logger.debug(outfile.name)
                 p = subprocess.Popen(runcommand,
                          stdin=devnull,
                          stdout=outfile,
@@ -96,8 +95,9 @@ class BackupWorker(object):
                          startupinfo=startupinfo)
 
                 stime = time.time()
-                backup_icon.show_balloon('Info', 'Backup starting', wx.ICON_INFORMATION)
+                backup_icon.show_balloon('rs-backup', 'Backup starting', wx.ICON_INFORMATION)
                 self.logger.info( ("Backup running: PID is {}").format(p.pid) )
+                backup_icon.set_icon(TRAY_ICON, 'rs_backup:\nBackup running')
                 while (p.poll() is None):
                     ntime = time.time()
                     self.status = 'Running '+ str(int(ntime-stime))
@@ -123,11 +123,11 @@ class BackupWorker(object):
 
             if returncode =='OK':
                 self.logger.info('Backup completed successfully')
-                backup_icon.show_balloon('Success', 'Backup completed successfully', wx.ICON_INFORMATION)
+                backup_icon.show_balloon('rs-backup', 'Backup completed successfully', wx.ICON_INFORMATION)
                 self.logger.debug('Backup process log file follows - \n.........\n'+all_lines+'.........')
             else:
                 self.logger.error('Backup completed with errors')
-                backup_icon.show_balloon('Error', 'Backup completed with errors', wx.ICON_ERROR)
+                backup_icon.show_balloon('rs-backup', 'Backup completed with errors', wx.ICON_ERROR)
                 self.logger.error(("Exit code was: {}").format(returncode))
                 self.logger.error('Backup process log file follows - \n.........\n'+all_lines+'.........')
             
@@ -137,6 +137,7 @@ class BackupWorker(object):
                 stime = ntime + wtime
                 nexttime = time.asctime( time.localtime(stime) )
                 self.logger.info( 'Waiting: Next backup at '+nexttime )
+                backup_icon.set_icon(TRAY_ICON, 'rs_backup:\nNext backup at '+nexttime)
                 for i in range(wtime):
                     ntime = time.time()
                     self.status = 'Waiting '+ str(int(stime-ntime))
@@ -223,7 +224,7 @@ def create_menu_item(menu, label, func):
 class TaskBarIcon(wx.adv.TaskBarIcon):
     def __init__(self):
         wx.adv.TaskBarIcon.__init__(self)
-        self.set_icon(TRAY_ICON)
+        self.set_icon(TRAY_ICON, 'Initialising ...')
         self.Bind(wx.adv.EVT_TASKBAR_LEFT_DOWN, self.on_left_down)
         self.init_debug_window()
         self.init_backup_thread()
@@ -252,7 +253,7 @@ class TaskBarIcon(wx.adv.TaskBarIcon):
     def show_balloon(self, title, text, flags = wx.ICON_INFORMATION):
         self.ShowBalloon(title, text, flags)
 
-    def set_icon(self, path):
+    def set_icon(self, path, TRAY_TOOLTIP):
         icon = wx.Icon(wx.IconLocation(path))
         self.SetIcon(icon, TRAY_TOOLTIP)
 
