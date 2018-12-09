@@ -13,7 +13,10 @@ import subprocess
 
 from threading import Thread
 
+from ConfigParser import SafeConfigParser
+
 from ConfigFileEditor import ConfigFileEditPopup
+from ConfigFileEditor2 import ConfigParserEditPopup
 
 import logging, logging.handlers
 
@@ -40,7 +43,6 @@ TRAY_ICON = 'Flag-red.ico'
 Myname = "rs-backup-GUI: A GUI front-end for rs_backup_suite"
 Myversion = "Version 0.1.1+development"
 Myauthor = "Copyright (C) 2018 Andrew Robinson"
-
 MyNotice = "\nThis program is free software: you can redistribute it and/or modify \n\
 it under the terms of the GNU General Public License as published by\n\
 the Free Software Foundation, either version 3 of the License, or\n\
@@ -55,31 +57,36 @@ You should have received a copy of the GNU General Public License\n\
 along with this program.  If not, see <https://www.gnu.org/licenses/>"
 
 devnull = open(os.devnull, 'wb')
-mainlogfile = os.path.expanduser('~/.rs-backup/rs-backup-GUI.log')
 
 class BackupWorker(object):
 
-    def __init__(self, mainlogfile):
+    def __init__(self):
         self.kill_thread = False
-        self.mainlogfile = mainlogfile
         self.status = 'Initialising'
+        self.interface = None
+
+        ## Defaults for the configurable parameters
+        self.mainlogfile = os.path.expanduser('~/.rs-backup/rs-backup-GUI.log')
+        self.logging_level = logging.DEBUG
+        self.backup_freq = 600
+        self.logging_rotate_time = datetime.timedelta(hours=24)
+        self.config_file = os.path.expanduser('~/.rs-backup/rs-backup-GUI.cfg')
 
     def backup_run(self):
         self.logger = logging.getLogger('Main_Logger')
         self.logger.setLevel(logging.DEBUG)
 
-        formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
+        self.configure()
 
         handler = logging.handlers.RotatingFileHandler(self.mainlogfile, backupCount=7)
-        handler.setLevel(logging.DEBUG)
-        handler.setFormatter(formatter)
-        
+        handler.setLevel(self.logging_level)
+        formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
+        handler.setFormatter(formatter)      
         self.logger.addHandler(handler)
-        self.next_rotate = datetime.datetime.now() + datetime.timedelta(hours=24)
+
+        self.next_rotate = datetime.datetime.now() + self.logging_rotate_time
 
         sys.stderr = LoggerWriter(self.logger.error)
-
-        backup_freq = 600 #seconds
 
         runcommand = ["c:/cygwin64/bin/bash", "-lc", "(rs-backup-run -v) && echo 'OK' || echo 'Not OK' "]
         startupinfo = subprocess.STARTUPINFO()
@@ -95,15 +102,16 @@ class BackupWorker(object):
                          startupinfo=startupinfo)
 
                 stime = time.time()
-                backup_icon.show_balloon('rs-backup', 'Backup starting', wx.ICON_INFORMATION)
+                
+                self.interface.notify('Backup Running', flags=wx.ICON_INFORMATION)
+                self.status = 'Backup Running'
                 self.logger.info( ("Backup running: PID is {}").format(p.pid) )
-                backup_icon.set_icon(TRAY_ICON, 'rs_backup:\nBackup running')
                 while (p.poll() is None):
                     ntime = time.time()
-                    self.status = 'Running '+ str(int(ntime-stime))
                     time.sleep(1)
                     if self.kill_thread:
                         self.logger.debug( 'Trying to kill rsync process ...')
+                        self.interface.notify('Aborting backup', flags=wx.ICON_ERROR)
                         killcommand = ["c:/cygwin64/bin/bash", "-lc", "ps | grep " +str(p.pid) + " | grep rsync | awk '{print $1;}' | xargs kill -HUP"]
                         subprocess.call(killcommand,
                                  stdin=devnull,
@@ -123,34 +131,60 @@ class BackupWorker(object):
 
             if returncode =='OK':
                 self.logger.info('Backup completed successfully')
-                backup_icon.show_balloon('rs-backup', 'Backup completed successfully', wx.ICON_INFORMATION)
+                self.interface.notify('Backup completed successfully', flags=wx.ICON_INFORMATION)
                 self.logger.debug('Backup process log file follows - \n.........\n'+all_lines+'.........')
             else:
                 self.logger.error('Backup completed with errors')
-                backup_icon.show_balloon('rs-backup', 'Backup completed with errors', wx.ICON_ERROR)
-                self.logger.error(("Exit code was: {}").format(returncode))
+                self.interface.notify('Backup completed with errors', flags=wx.ICON_ERROR)
                 self.logger.error('Backup process log file follows - \n.........\n'+all_lines+'.........')
             
             ntime = time.time()
             if not self.kill_thread:
-                wtime = int(max(0, backup_freq - (ntime-stime))+0.5)
+                wtime = int(max(0, self.backup_freq - (ntime-stime))+0.5)
                 stime = ntime + wtime
                 nexttime = time.asctime( time.localtime(stime) )
+                self.status = 'Next backup at '+nexttime
                 self.logger.info( 'Waiting: Next backup at '+nexttime )
-                backup_icon.set_icon(TRAY_ICON, 'rs_backup:\nNext backup at '+nexttime)
+                self.interface.notify('Next backup at '+nexttime , flags=None)
                 for i in range(wtime):
                     ntime = time.time()
-                    self.status = 'Waiting '+ str(int(stime-ntime))
                     n = datetime.datetime.now()
                     if n>self.next_rotate:
                         sys.stderr = sys.__stderr__
                         self.logger.info('Rotating logfile')
-                        self.next_rotate = self.next_rotate + datetime.timedelta(hours=24)
+                        self.next_rotate = self.next_rotate + self.logging_rotate_time
                         handler.doRollover()
                         sys.stderr = LoggerWriter(self.logger.error)
                     time.sleep(1)
                     if self.kill_thread:
                         return
+
+    def configure(self):
+
+        config = SafeConfigParser()
+        config.read(self.config_file)
+
+        self.backup_freq = float(config.get('backup','frequency'))
+        rt = float(config.get('logging','rotate_time'))
+
+        self.logging_rotate_time = datetime.timedelta(hours=rt)
+
+        l = config.get('logging','level')
+        if l=='DEBUG':
+            self.logging_level = logging.DEBUG
+        elif l=='INFO':
+            self.logging_level = logging.INFO
+        elif l=='WARNING	':
+            self.logging_level = logging.WARNING
+        elif l=='ERROR':
+            self.logging_level = logging.ERROR
+        elif l=='CRITICAL':
+            self.logging_level = logging.CRITICAL
+        else:
+            self.logging_level = logging.NOTSET
+
+        self.mainlogfile = config.get('logging','location')
+        self.mainlogfile = os.path.expanduser(self.mainlogfile)           
 
     def run(self):
         self.kill_thread = False
@@ -161,17 +195,17 @@ class BackupWorker(object):
         self.kill_thread = True
         self.logger.warning('Backup abort requested!')
         self.logger.debug('Waiting for backup thread to finish ....')
-        self.backup_thread.join(10)
+        self.backup_thread.join(20)
 
         if not self.backup_thread.isAlive():
-            self.logger.debug( 'Done!' )
+            self.logger.debug( 'Backup thread finished!' )
         else:
-            self.logger.warning( "Woops - didn't finish in time" )
+            self.logger.warning( "Woops! Backup thread didn't finish in time" )
 
         self.status = "Stopped"
- 
 
-class MyForm(wx.Frame):
+
+class DebugLogWindow(wx.Frame):
  
     def __init__(self, parent, title):
         wx.Frame.__init__(self, parent, 
@@ -182,11 +216,12 @@ class MyForm(wx.Frame):
 
         # Add a panel so it looks the correct on all platforms
         panel = wx.Panel(self, wx.ID_ANY)
+
         style = wx.TE_MULTILINE|wx.TE_READONLY|wx.HSCROLL
-        self.log = wx.TextCtrl(panel, wx.ID_ANY, size=(300,100),
-                          style=style)
+        self.log = wx.TextCtrl(panel, wx.ID_ANY, style=style)
         font1 = wx.Font(10, wx.MODERN, wx.NORMAL, wx.NORMAL, False, u'Consolas')
         self.log.SetFont(font1)
+        self._set_textctrl_size_by_chars(self.log, 80, 20)
         self.readlog()
         btn = wx.Button(panel, wx.ID_ANY, 'Refresh')
         self.Bind(wx.EVT_BUTTON, self.on_refresh, btn)
@@ -194,13 +229,21 @@ class MyForm(wx.Frame):
         # Add widgets to a sizer
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(self.log, 1, wx.ALL|wx.EXPAND, 5)
+
         sizer.Add(btn, 0, wx.ALL|wx.CENTER, 5)
         panel.SetSizer(sizer)
 
+        sizer.Fit(self)
+
+    def _set_textctrl_size_by_chars(self, tc, w, h):
+        sz = tc.GetTextExtent('X')
+        sz = wx.Size(sz.x * w, sz.y * h)
+        tc.SetInitialSize(tc.GetSizeFromTextSize(sz))
+    
     def readlog(self):
         self.log.Clear()
         try:
-            with open(mainlogfile, "r") as infile:
+            with open(MyWorker.mainlogfile, "r") as infile:
                 lines = infile.read()
                 self.log.WriteText(lines)
         except IOError:
@@ -215,83 +258,94 @@ class MyForm(wx.Frame):
     def ShutDown(self):
         self.Destroy
 
-def create_menu_item(menu, label, func):
-    item = wx.MenuItem(menu, -1, label)
-    menu.Bind(wx.EVT_MENU, func, id=item.GetId())
-    menu.Append(item)
-    return item
 
+## https://stackoverflow.com/questions/35542551/how-to-create-a-taskbaricon-only-application-in-wxpython
 class TaskBarIcon(wx.adv.TaskBarIcon):
+    
     def __init__(self):
         wx.adv.TaskBarIcon.__init__(self)
-        self.set_icon(TRAY_ICON, 'Initialising ...')
-        self.Bind(wx.adv.EVT_TASKBAR_LEFT_DOWN, self.on_left_down)
+        self.my_icon = wx.Icon(wx.IconLocation(TRAY_ICON))
+        
+        self.notify('Initialising ...', flags=None)
+        self.Bind(wx.adv.EVT_TASKBAR_LEFT_DCLICK, self.on_left_dclick)
         self.init_debug_window()
-        self.init_backup_thread()
+
+        self.worker = None
 
     def init_debug_window(self):
-        self.debug_window = MyForm(root, "Debug Window")
+        self.debug_window = DebugLogWindow(root, "Debug Window")
         
-    def init_backup_thread(self):
-        MyWorker.run()
+    def init_status_window(self):
+        self.status_window = StatusWindow(root, "Status Window")
+        
+    def create_menu_item(self, menu, label, func):
+        item = wx.MenuItem(menu, -1, label)
+        self.Bind(wx.EVT_MENU, func, id=item.GetId())
+        menu.Append(item)
+        return item
 
     def CreatePopupMenu(self):
         #This is bound by default to right mouse key click on the icon
         menu = wx.Menu()
         configmenu = wx.Menu()
         menu.AppendSubMenu(configmenu, 'Configure...')
+        self.create_menu_item(configmenu, 'Configure rs-backup', self.on_configure1)
+        self.create_menu_item(configmenu, 'Configure GUI', self.on_configure2)
         menu.AppendSeparator()
-        create_menu_item(menu, 'Show debug log', self.on_debug)
+        self.create_menu_item(menu, 'Show debug log', self.on_debug)
         menu.AppendSeparator()
-        create_menu_item(menu, 'About...', self.on_about)
-        create_menu_item(menu, 'Exit', self.on_exit)
-
-        create_menu_item(configmenu, 'Configure rs_backup_run', self.on_configure)
+        self.create_menu_item(menu, 'About...', self.on_about)
+        self.create_menu_item(menu, 'Exit', self.on_exit)
         
         return menu
 
-    def show_balloon(self, title, text, flags = wx.ICON_INFORMATION):
-        self.ShowBalloon(title, text, flags)
+    def notify(self, text, flags = wx.ICON_INFORMATION):
+        if flags:
+            self.ShowBalloon('rs_backup', text, flags)
+        self.SetIcon(self.my_icon, 'rs_backup:\n'+text)
 
-    def set_icon(self, path, TRAY_TOOLTIP):
-        icon = wx.Icon(wx.IconLocation(path))
-        self.SetIcon(icon, TRAY_TOOLTIP)
-
-    def on_left_down(self, event):
-        MyWorker.logger.info( MyWorker.status )
-
-    def on_hello(self, event):
-        print 'Hello, world!'
+    def on_left_dclick(self, event):
+        pass
 
     def on_debug(self, event):
         self.debug_window.Show(True)
         self.debug_window.readlog()
 
-    def on_configure(self, event):
-        MyWorker.logger.debug( 'Configure me')
+    def on_status(self, event):
+        pass
+
+    def on_configure1(self, event):
         ConfigFileEditPopup('C:/cygwin64/etc/rs-backup/client-config')
+
+    def on_configure2(self, event):
+        ConfigParserEditPopup(self.worker.config_file)
         
     def on_about(self, event):
         about  = Myname + "\n" + Myversion + "\n" + Myauthor + "\n" + MyNotice
         wx.MessageBox(message=about, caption="About", style=wx.OK | wx.ICON_INFORMATION)
 
     def on_exit(self, event):
-        MyWorker.stop()
+        self.worker.stop()
         self.debug_window.ShutDown()
         self.Destroy()
         root.Destroy()
 
-
-MyWorker = BackupWorker(mainlogfile)
 
 app = wx.App()
 
 root = wx.Frame(None, -1, "top") # This is the top-level window.
 root.Show(False)     # Don't show it
 
+MyWorker = BackupWorker()
 backup_icon = TaskBarIcon()
 
+MyWorker.interface = backup_icon
+backup_icon.worker = MyWorker
+
+MyWorker.run()
+
 app.MainLoop()
+
 
 
 
