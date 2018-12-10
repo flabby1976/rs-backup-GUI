@@ -41,7 +41,7 @@ TRAY_TOOLTIP = 'rs-backup-GUI'
 TRAY_ICON = 'Flag-red.ico'
 
 Myname = "rs-backup-GUI: A GUI front-end for rs_backup_suite"
-Myversion = "Version 0.1.1+development"
+Myversion = "Version 0.2"
 Myauthor = "Copyright (C) 2018 Andrew Robinson"
 MyNotice = "\nThis program is free software: you can redistribute it and/or modify \n\
 it under the terms of the GNU General Public License as published by\n\
@@ -168,6 +168,7 @@ class BackupWorker(object):
         rt = float(config.get('logging','rotate_time'))
 
         self.logging_rotate_time = datetime.timedelta(hours=rt)
+        self.next_rotate = datetime.datetime.now() + self.logging_rotate_time
 
         l = config.get('logging','level')
         if l=='DEBUG':
@@ -267,16 +268,13 @@ class TaskBarIcon(wx.adv.TaskBarIcon):
         self.my_icon = wx.Icon(wx.IconLocation(TRAY_ICON))
         
         self.notify('Initialising ...', flags=None)
-        self.Bind(wx.adv.EVT_TASKBAR_LEFT_DCLICK, self.on_left_dclick)
+        self.Bind(wx.adv.EVT_TASKBAR_LEFT_DCLICK, self.on_debug)
         self.init_debug_window()
 
         self.worker = None
 
     def init_debug_window(self):
         self.debug_window = DebugLogWindow(root, "Debug Window")
-        
-    def init_status_window(self):
-        self.status_window = StatusWindow(root, "Status Window")
         
     def create_menu_item(self, menu, label, func):
         item = wx.MenuItem(menu, -1, label)
@@ -304,15 +302,9 @@ class TaskBarIcon(wx.adv.TaskBarIcon):
             self.ShowBalloon('rs_backup', text, flags)
         self.SetIcon(self.my_icon, 'rs_backup:\n'+text)
 
-    def on_left_dclick(self, event):
-        pass
-
     def on_debug(self, event):
         self.debug_window.Show(True)
         self.debug_window.readlog()
-
-    def on_status(self, event):
-        pass
 
     def on_configure1(self, event):
         ConfigFileEditPopup('C:/cygwin64/etc/rs-backup/client-config')
@@ -329,7 +321,6 @@ class TaskBarIcon(wx.adv.TaskBarIcon):
         self.debug_window.ShutDown()
         self.Destroy()
         root.Destroy()
-
 
 app = wx.App()
 
