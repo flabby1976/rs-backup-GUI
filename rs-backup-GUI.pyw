@@ -41,7 +41,7 @@ TRAY_TOOLTIP = 'rs-backup-GUI'
 TRAY_ICON = 'Flag-red.ico'
 
 Myname = "rs-backup-GUI: A GUI front-end for rs_backup_suite"
-Myversion = "Version 0.2rc"
+Myversion = "Version 0.2"
 Myauthor = "Copyright (C) 2018 Andrew Robinson"
 MyNotice = "\nThis program is free software: you can redistribute it and/or modify \n\
 it under the terms of the GNU General Public License as published by\n\
@@ -168,6 +168,7 @@ class BackupWorker(object):
         rt = float(config.get('logging','rotate_time'))
 
         self.logging_rotate_time = datetime.timedelta(hours=rt)
+        self.next_rotate = datetime.datetime.now() + self.logging_rotate_time
 
         l = config.get('logging','level')
         if l=='DEBUG':
