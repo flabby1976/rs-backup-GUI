@@ -7,6 +7,8 @@ class MyConfigObj(ConfigObj):
     def __init__(self, *args, **kwargs):
         ConfigObj.__init__(self, *args, **kwargs)
 
+
+#_write_line() modified so no spaces either side of the = sign 
     def _write_line(self, indent_string, entry, this_entry, comment):
         """Write an individual line, for the write method"""
         # NOTE: the calls to self._quote here handles non-StringType values.
@@ -21,6 +23,7 @@ class MyConfigObj(ConfigObj):
                                val,
                                self._decode_element(comment))
 
+#_quote() and _unquote() modified to leave quotes untouched
     def _unquote(self, value):
          return value
 
@@ -67,9 +70,9 @@ class ConfigFileEditPopup(wx.Frame):
         buttonOk.Bind(wx.EVT_BUTTON,self.OK)      
         buttonCancel.Bind(wx.EVT_BUTTON,self.Cancel)
         
-        sizer.Fit(panel)
         panel.SetSizer(sizer)
-        panel.Fit()
+        sizer.Fit(self)
+
 
     def OK(self, event):
         for key in self.config.scalars:
