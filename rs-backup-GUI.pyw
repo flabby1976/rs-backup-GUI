@@ -87,6 +87,7 @@ class BackupWorker(object):
         self.next_rotate = datetime.datetime.now() + self.logging_rotate_time
 
         sys.stderr = LoggerWriter(self.logger.error)
+        print >> sys.stderr, "Checking sys.stderr redirect"
 
         runcommand = ["c:/cygwin64/bin/bash", "-lc", "(rs-backup-run -v) && echo 'OK' || echo 'Not OK' "]
         startupinfo = subprocess.STARTUPINFO()
@@ -107,7 +108,6 @@ class BackupWorker(object):
                 self.status = 'Backup Running'
                 self.logger.info( ("Backup running: PID is {}").format(p.pid) )
                 while (p.poll() is None):
-                    ntime = time.time()
                     time.sleep(1)
                     if self.kill_thread:
                         self.logger.debug( 'Trying to kill rsync process ...')
@@ -119,6 +119,7 @@ class BackupWorker(object):
                                  stderr=subprocess.STDOUT,
                                  startupinfo=startupinfo)
 
+                ntime = time.time()
                 self.logger.debug( ("Backup finished: elapsed time was: {}").format(ntime-stime))
                 all_lines = ''
                 try:
@@ -138,26 +139,30 @@ class BackupWorker(object):
                 self.interface.notify('Backup completed with errors', flags=wx.ICON_ERROR)
                 self.logger.error('Backup process log file follows - \n.........\n'+all_lines+'.........')
             
-            ntime = time.time()
             if not self.kill_thread:
+                ntime = time.time()
                 wtime = int(max(0, self.backup_freq - (ntime-stime))+0.5)
-                stime = ntime + wtime
-                nexttime = time.asctime( time.localtime(stime) )
+                nexttime = time.asctime( time.localtime(ntime + wtime) )
                 self.status = 'Next backup at '+nexttime
                 self.logger.info( 'Waiting: Next backup at '+nexttime )
                 self.interface.notify('Next backup at '+nexttime , flags=None)
                 for i in range(wtime):
-                    ntime = time.time()
                     n = datetime.datetime.now()
                     if n>self.next_rotate:
-                        sys.stderr = sys.__stderr__
                         self.logger.info('Rotating logfile')
-                        self.next_rotate = self.next_rotate + self.logging_rotate_time
+                        sys.stderr = sys.__stderr__
+                        self.logger.removeHandler(handler)
                         handler.doRollover()
+                        self.logger.addHandler(handler)
                         sys.stderr = LoggerWriter(self.logger.error)
+                        self.logger.info('Succesfully rotated logfile')
+                        self.next_rotate = self.next_rotate + self.logging_rotate_time
+                        self.logger.info('Next logfile rotate at '+ str(self.next_rotate))
+                        print >> sys.stderr, "Checking sys.stderr redirect"
                     time.sleep(1)
                     if self.kill_thread:
-                        return
+                        break
+                        
 
     def configure(self):
 
@@ -289,6 +294,7 @@ class TaskBarIcon(wx.adv.TaskBarIcon):
         menu.AppendSubMenu(configmenu, 'Configure...')
         self.create_menu_item(configmenu, 'Configure rs-backup', self.on_configure1)
         self.create_menu_item(configmenu, 'Configure GUI', self.on_configure2)
+        self.create_menu_item(configmenu, 'Choose files to backup', self.on_configure3)
         menu.AppendSeparator()
         self.create_menu_item(menu, 'Show debug log', self.on_debug)
         menu.AppendSeparator()
@@ -312,6 +318,20 @@ class TaskBarIcon(wx.adv.TaskBarIcon):
     def on_configure2(self, event):
         ConfigParserEditPopup(self.worker.config_file)
         
+    def on_configure3(self, event):
+        with wx.DirDialog (None, "Choose input directory", "",
+                    wx.DD_DEFAULT_STYLE | wx.DD_DIR_MUST_EXIST) as fileDialog:
+
+            if fileDialog.ShowModal() == wx.ID_CANCEL:
+                return     # the user changed their mind
+
+            # Proceed loading the file chosen by the user
+            pathname = fileDialog.GetPath()
+
+            self.worker.logger.debug(pathname)
+
+        pass
+
     def on_about(self, event):
         about  = Myname + "\n" + Myversion + "\n" + Myauthor + "\n" + MyNotice
         wx.MessageBox(message=about, caption="About", style=wx.OK | wx.ICON_INFORMATION)
