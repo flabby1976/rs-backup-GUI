@@ -62,6 +62,7 @@ class BackupWorker(object):
 
     def __init__(self):
         self.kill_thread = False
+        self.force_flag=False
         self.status = 'Initialising'
         self.interface = None
 
@@ -89,13 +90,19 @@ class BackupWorker(object):
         sys.stderr = LoggerWriter(self.logger.error)
         print >> sys.stderr, "Checking sys.stderr redirect"
 
-        runcommand = ["c:/cygwin64/bin/bash", "-lc", "(rs-backup-run -v) && echo 'OK' || echo 'Not OK' "]
         startupinfo = subprocess.STARTUPINFO()
         startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
 
         while not self.kill_thread:
 
             with tempfile.TemporaryFile() as outfile:
+
+                if self.force_flag:
+                    runcommand = ["c:/cygwin64/bin/bash", "-lc", "(rs-backup-run -vf) && echo 'OK' || echo 'Not OK' "]
+                    self.force_flag = False
+                else:
+                    runcommand = ["c:/cygwin64/bin/bash", "-lc", "(rs-backup-run -v) && echo 'OK' || echo 'Not OK' "]
+            
                 p = subprocess.Popen(runcommand,
                          stdin=devnull,
                          stdout=outfile,
@@ -160,7 +167,7 @@ class BackupWorker(object):
                         self.logger.info('Next logfile rotate at '+ str(self.next_rotate))
                         print >> sys.stderr, "Checking sys.stderr redirect"
                     time.sleep(1)
-                    if self.kill_thread:
+                    if self.kill_thread or self.force_flag:
                         break
                         
 
@@ -299,6 +306,7 @@ class TaskBarIcon(wx.adv.TaskBarIcon):
         self.create_menu_item(menu, 'Show debug log', self.on_debug)
         menu.AppendSeparator()
         self.create_menu_item(menu, 'About...', self.on_about)
+        self.create_menu_item(menu, 'Set --force-run flag for next backup', self.on_force)
         self.create_menu_item(menu, 'Exit', self.on_exit)
         
         return menu
@@ -335,6 +343,9 @@ class TaskBarIcon(wx.adv.TaskBarIcon):
     def on_about(self, event):
         about  = Myname + "\n" + Myversion + "\n" + Myauthor + "\n" + MyNotice
         wx.MessageBox(message=about, caption="About", style=wx.OK | wx.ICON_INFORMATION)
+
+    def on_force(self, event):
+        self.worker.force_flag=True
 
     def on_exit(self, event):
         self.worker.stop()
