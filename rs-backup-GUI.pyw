@@ -174,15 +174,21 @@ class BackupWorker(object):
     def configure(self):
 
         config = SafeConfigParser()
-        config.read(self.config_file)
+        found = config.read(self.config_file)
 
-        self.backup_freq = float(config.get('backup','frequency'))
-        rt = float(config.get('logging','rotate_time'))
+        if found:
+            self.backup_freq = float(config.get('backup','frequency'))
+            rt = float(config.get('logging','rotate_time'))
+            l = config.get('logging','level')
+            self.mainlogfile = config.get('logging','location')
+        else:
+            self.backup_freq = 300
+            rt = 24
+            l = "DEBUG"
+            self.mainlogfile = "rs-backup-GUI.log"
 
         self.logging_rotate_time = datetime.timedelta(hours=rt)
-        self.next_rotate = datetime.datetime.now() + self.logging_rotate_time
 
-        l = config.get('logging','level')
         if l=='DEBUG':
             self.logging_level = logging.DEBUG
         elif l=='INFO':
@@ -196,8 +202,8 @@ class BackupWorker(object):
         else:
             self.logging_level = logging.NOTSET
 
-        self.mainlogfile = config.get('logging','location')
-        self.mainlogfile = os.path.expanduser(self.mainlogfile)           
+        self.mainlogfile = os.path.expanduser(self.mainlogfile)
+
 
     def run(self):
         self.kill_thread = False
