@@ -119,10 +119,11 @@ class BackupWorker(object):
                     if self.kill_thread:
                         self.logger.debug( 'Trying to kill rsync process ...')
                         self.interface.notify('Aborting backup', flags=wx.ICON_ERROR)
-                        killcommand = ["c:/cygwin64/bin/bash", "-lc", "ps | grep " +str(p.pid) + " | grep rsync | awk '{print $1;}' | xargs kill -HUP"]
+                        killcommand = ["c:/cygwin64/bin/bash", "-lc", "ps | grep " +str(p.pid) + " | awk '{print $1;}' |  while read pid; do /bin/kill -- -${pid}; done;"]
+                        self.logger.debug(killcommand)
                         subprocess.call(killcommand,
                                  stdin=devnull,
-                                 stdout=outfile,
+#                                 stdout=outfile,
                                  stderr=subprocess.STDOUT,
                                  startupinfo=startupinfo)
 
