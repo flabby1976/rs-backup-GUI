@@ -41,7 +41,7 @@ TRAY_TOOLTIP = 'rs-backup-GUI'
 TRAY_ICON = 'Flag-red.ico'
 
 Myname = "rs-backup-GUI: A GUI front-end for rs_backup_suite"
-Myversion = "Version 0.3"
+Myversion = "Version 0.3 + develop"
 Myauthor = "Copyright (C) 2018, 2019 Andrew Robinson"
 MyNotice = "\nThis program is free software: you can redistribute it and/or modify \n\
 it under the terms of the GNU General Public License as published by\n\
