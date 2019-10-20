@@ -25,13 +25,13 @@ class ConfigParserEditPopup(wx.Frame):
         for section_name in self.config.sections():
             self.ents[section_name]={}
             l = wx.StaticText(panel, label="["+section_name+"]")
-            sizer.Add(l, pos=(row, 0), flag=wx.TOP|wx.LEFT|wx.BOTTOM, border=5)
+            sizer.Add(l, pos=(row, 0), flag=wx.EXPAND|wx.LEFT|wx.RIGHT, border=5)
             row = row+1
             
-            for key, value in self.config.items(section_name):
+            for key, value in self.config.items(section_name, 1):
 
-                l = wx.StaticText(panel, label=str(key))
-                sizer.Add(l, pos=(row, 0), flag=wx.TOP|wx.LEFT|wx.BOTTOM, border=5)
+                l = wx.StaticText(panel, label=str(key), style=wx.ALIGN_RIGHT)
+                sizer.Add(l, pos=(row, 0), flag=wx.EXPAND|wx.LEFT|wx.RIGHT, border=5)
 
                 e = wx.TextCtrl(panel, value=value)
                 sizer.Add(e, pos=(row, 1), span=(1, 5),

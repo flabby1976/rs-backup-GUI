@@ -41,8 +41,8 @@ TRAY_TOOLTIP = 'rs-backup-GUI'
 TRAY_ICON = 'Flag-red.ico'
 
 Myname = "rs-backup-GUI: A GUI front-end for rs_backup_suite"
-Myversion = "Version 0.2"
-Myauthor = "Copyright (C) 2018 Andrew Robinson"
+Myversion = "Version 0.3"
+Myauthor = "Copyright (C) 2018, 2019 Andrew Robinson"
 MyNotice = "\nThis program is free software: you can redistribute it and/or modify \n\
 it under the terms of the GNU General Public License as published by\n\
 the Free Software Foundation, either version 3 of the License, or\n\
@@ -62,39 +62,63 @@ class BackupWorker(object):
 
     def __init__(self):
         self.kill_thread = False
+        self.force_flag=False
         self.status = 'Initialising'
         self.interface = None
 
         ## Defaults for the configurable parameters
-        self.mainlogfile = os.path.expanduser('~/.rs-backup/rs-backup-GUI.log')
-        self.logging_level = logging.DEBUG
-        self.backup_freq = 600
-        self.logging_rotate_time = datetime.timedelta(hours=24)
+        self.default_config_file = os.path.expanduser('rs-backup-GUI.cfg')
+        ## Local configurable parameters
         self.config_file = os.path.expanduser('~/.rs-backup/rs-backup-GUI.cfg')
 
-    def backup_run(self):
+        self.include_file = os.path.expanduser('c:/cygwin64/tmp/rs-backup-GUI.inc')
+
         self.logger = logging.getLogger('Main_Logger')
         self.logger.setLevel(logging.DEBUG)
 
-        self.configure()
+        self.handler = None
 
-        handler = logging.handlers.RotatingFileHandler(self.mainlogfile, backupCount=7)
-        handler.setLevel(self.logging_level)
-        formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
-        handler.setFormatter(formatter)      
-        self.logger.addHandler(handler)
+        self.mainlogfile = None
+        self.logging_level = None
+        self.logging_rotate_time = datetime.timedelta(0)
+        self.backup_freq = 0
+
+        self.remote_host = None
+
+        self.configure()
 
         self.next_rotate = datetime.datetime.now() + self.logging_rotate_time
 
-        sys.stderr = LoggerWriter(self.logger.error)
 
-        runcommand = ["c:/cygwin64/bin/bash", "-lc", "(rs-backup-run -v) && echo 'OK' || echo 'Not OK' "]
+    def backup_run(self):
+
         startupinfo = subprocess.STARTUPINFO()
         startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
 
         while not self.kill_thread:
 
+            self.configure()
+
             with tempfile.TemporaryFile() as outfile:
+
+                backup_command = "rs-backup-run -v"
+
+                if self.force_flag:
+                    backup_command = backup_command + " -f"
+                    self.force_flag = False
+
+                backup_command = backup_command + " -r " + self.remote_host
+                backup_command = backup_command + " --remote-user=" + self.remote_user
+                backup_command = backup_command + " --push-module=" + self.push_module
+                backup_command = backup_command + " -o " + self.rsync_options
+                backup_command = backup_command + " -i /tmp/rs-backup-GUI.inc"
+
+                self.logger.debug(backup_command)
+
+                runcommand = ["c:/cygwin64/bin/bash", "-lc", "("+backup_command+") && echo 'OK' || echo 'Not OK' " ]
+            
+                self.logger.debug(runcommand)
+
                 p = subprocess.Popen(runcommand,
                          stdin=devnull,
                          stdout=outfile,
@@ -107,18 +131,19 @@ class BackupWorker(object):
                 self.status = 'Backup Running'
                 self.logger.info( ("Backup running: PID is {}").format(p.pid) )
                 while (p.poll() is None):
-                    ntime = time.time()
                     time.sleep(1)
                     if self.kill_thread:
                         self.logger.debug( 'Trying to kill rsync process ...')
                         self.interface.notify('Aborting backup', flags=wx.ICON_ERROR)
-                        killcommand = ["c:/cygwin64/bin/bash", "-lc", "ps | grep " +str(p.pid) + " | grep rsync | awk '{print $1;}' | xargs kill -HUP"]
+                        killcommand = ["c:/cygwin64/bin/bash", "-lc", "ps | grep " +str(p.pid) + " | awk '{print $1;}' |  while read pid; do /bin/kill -- -${pid}; done;"]
+                        self.logger.debug(killcommand)
                         subprocess.call(killcommand,
                                  stdin=devnull,
                                  stdout=outfile,
                                  stderr=subprocess.STDOUT,
                                  startupinfo=startupinfo)
 
+                ntime = time.time()
                 self.logger.debug( ("Backup finished: elapsed time was: {}").format(ntime-stime))
                 all_lines = ''
                 try:
@@ -138,39 +163,55 @@ class BackupWorker(object):
                 self.interface.notify('Backup completed with errors', flags=wx.ICON_ERROR)
                 self.logger.error('Backup process log file follows - \n.........\n'+all_lines+'.........')
             
-            ntime = time.time()
             if not self.kill_thread:
+                ntime = time.time()
                 wtime = int(max(0, self.backup_freq - (ntime-stime))+0.5)
-                stime = ntime + wtime
-                nexttime = time.asctime( time.localtime(stime) )
+                nexttime = time.asctime( time.localtime(ntime + wtime) )
                 self.status = 'Next backup at '+nexttime
                 self.logger.info( 'Waiting: Next backup at '+nexttime )
                 self.interface.notify('Next backup at '+nexttime , flags=None)
                 for i in range(wtime):
-                    ntime = time.time()
                     n = datetime.datetime.now()
                     if n>self.next_rotate:
-                        sys.stderr = sys.__stderr__
                         self.logger.info('Rotating logfile')
-                        self.next_rotate = self.next_rotate + self.logging_rotate_time
-                        handler.doRollover()
+                        sys.stderr = sys.__stderr__
+                        self.logger.removeHandler(self.handler)
+                        self.handler.doRollover()
+                        self.logger.addHandler(self.handler)
                         sys.stderr = LoggerWriter(self.logger.error)
+                        self.logger.info('Successfully rotated logfile')
+                        self.next_rotate = self.next_rotate + self.logging_rotate_time
+                        self.logger.info('Next logfile rotate at '+ str(self.next_rotate))
+                        print >> sys.stderr, "Checking sys.stderr redirect"
                     time.sleep(1)
-                    if self.kill_thread:
-                        return
+                    if self.kill_thread or self.force_flag:
+                        break
+                        
 
     def configure(self):
 
-        config = SafeConfigParser()
-        config.read(self.config_file)
+        config = SafeConfigParser(allow_no_value=True)
 
-        self.backup_freq = float(config.get('backup','frequency'))
-        rt = float(config.get('logging','rotate_time'))
+        found = config.read([self.default_config_file,self.config_file])
+
+        if found:
+            self.backup_freq = float(config.get('backup','frequency'))
+            rt = float(config.get('logging','rotate_time'))
+            l = config.get('logging','level')
+            self.mainlogfile = config.get('logging','location')
+            self.remote_host = config.get('rs-backup-run', 'remote_host')
+            self.remote_user = config.get('rs-backup-run', 'remote_user')
+            self.push_module = config.get('rs-backup-run', 'push_module')
+            self.rsync_options = config.get('rs-backup-run', 'rsync_options')
+        else:
+            self.backup_freq = 300
+            rt = 24
+            l = "DEBUG"
+            self.mainlogfile = "~/.rs-backup/rs-backup-GUI.log"
+
 
         self.logging_rotate_time = datetime.timedelta(hours=rt)
-        self.next_rotate = datetime.datetime.now() + self.logging_rotate_time
 
-        l = config.get('logging','level')
         if l=='DEBUG':
             self.logging_level = logging.DEBUG
         elif l=='INFO':
@@ -184,8 +225,42 @@ class BackupWorker(object):
         else:
             self.logging_level = logging.NOTSET
 
-        self.mainlogfile = config.get('logging','location')
-        self.mainlogfile = os.path.expanduser(self.mainlogfile)           
+        self.mainlogfile = os.path.expanduser(self.mainlogfile)
+
+        if self.handler:
+            sys.stderr = sys.__stderr__
+            self.logger.removeHandler(self.handler)
+
+        self.handler = logging.handlers.RotatingFileHandler(self.mainlogfile, backupCount=7)
+        self.handler.setLevel(self.logging_level)
+        formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
+        self.handler.setFormatter(formatter)
+        self.logger.addHandler(self.handler)
+
+        sys.stderr = LoggerWriter(self.logger.error)
+        # print >> sys.stderr, "Checking sys.stderr redirect"
+
+        try_paths = config.items("Locations to backup")
+
+        with open(self.include_file,'w') as temp:
+            self.logger.debug(temp.name)
+            include_list=[]
+            for it, try_path in try_paths:
+
+                drive, path_and_file = os.path.splitdrive(try_path)
+
+                fbits = ['cygdrive',drive.lower()[0]]
+                fbits.extend(path_and_file[1:].split(os.sep))
+                fbits.append('***')
+
+                self.logger.debug(fbits)
+                k=''
+                for bit in fbits:
+                    k = k + '/' + bit
+                    if not k in include_list:
+                        include_list.append(k)
+                        temp.write(k+'\n')
+
 
     def run(self):
         self.kill_thread = False
@@ -257,8 +332,7 @@ class DebugLogWindow(wx.Frame):
         self.Hide()
 
     def ShutDown(self):
-        self.Destroy
-
+        self.Destroy()
 
 ## https://stackoverflow.com/questions/35542551/how-to-create-a-taskbaricon-only-application-in-wxpython
 class TaskBarIcon(wx.adv.TaskBarIcon):
@@ -285,11 +359,7 @@ class TaskBarIcon(wx.adv.TaskBarIcon):
     def CreatePopupMenu(self):
         #This is bound by default to right mouse key click on the icon
         menu = wx.Menu()
-        configmenu = wx.Menu()
-        menu.AppendSubMenu(configmenu, 'Configure...')
-        self.create_menu_item(configmenu, 'Configure rs-backup', self.on_configure1)
-        self.create_menu_item(configmenu, 'Configure GUI', self.on_configure2)
-        menu.AppendSeparator()
+        self.create_menu_item(menu, 'Set --force-run flag and re-try backup', self.on_force)
         self.create_menu_item(menu, 'Show debug log', self.on_debug)
         menu.AppendSeparator()
         self.create_menu_item(menu, 'About...', self.on_about)
@@ -306,15 +376,12 @@ class TaskBarIcon(wx.adv.TaskBarIcon):
         self.debug_window.Show(True)
         self.debug_window.readlog()
 
-    def on_configure1(self, event):
-        ConfigFileEditPopup('C:/cygwin64/etc/rs-backup/client-config')
-
-    def on_configure2(self, event):
-        ConfigParserEditPopup(self.worker.config_file)
-        
     def on_about(self, event):
         about  = Myname + "\n" + Myversion + "\n" + Myauthor + "\n" + MyNotice
         wx.MessageBox(message=about, caption="About", style=wx.OK | wx.ICON_INFORMATION)
+
+    def on_force(self, event):
+        self.worker.force_flag=True
 
     def on_exit(self, event):
         self.worker.stop()
