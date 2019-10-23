@@ -301,7 +301,9 @@ class DebugLogWindow(wx.Frame):
         self.log = wx.TextCtrl(panel, wx.ID_ANY, style=style)
         font1 = wx.Font(10, wx.MODERN, wx.NORMAL, wx.NORMAL, False, 'Consolas')
         self.log.SetFont(font1)
+
         self._set_textctrl_size_by_chars(self.log, 80, 20)
+
         self.readlog()
         btn = wx.Button(panel, wx.ID_ANY, 'Refresh')
         self.Bind(wx.EVT_BUTTON, self.on_refresh, btn)
@@ -317,7 +319,11 @@ class DebugLogWindow(wx.Frame):
 
     @staticmethod
     def _set_textctrl_size_by_chars(tc, w, h):
-        sz = tc.GetTextExtent('X')
+        # https://stackoverflow.com/questions/14269880/the-right-way-to-find-the-size-of-text-in-wxpython
+        font2 = tc.GetFont()
+        dc = wx.ScreenDC()
+        dc.SetFont(font2)
+        sz = dc.GetTextExtent('X')
         sz = wx.Size(sz.x * w, sz.y * h)
         tc.SetInitialSize(tc.GetSizeFromTextSize(sz))
     
