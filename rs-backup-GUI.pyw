@@ -41,7 +41,7 @@ TRAY_TOOLTIP = 'rs-backup-GUI'
 TRAY_ICON = 'Flag-red.ico'
 
 Myname = "rs-backup-GUI: A GUI front-end for rs_backup_suite"
-Myversion = "Version 0.3 + Python 3 mods"
+Myversion = "Version 0.3 + Python 3 + dev"
 Myauthor = "Copyright (C) 2018, 2019 Andrew Robinson"
 MyNotice = "\nThis program is free software: you can redistribute it and/or modify \n\
 it under the terms of the GNU General Public License as published by\n\
@@ -134,7 +134,8 @@ class BackupWorker(object):
 
                 self.interface.notify('Backup Running', flags=wx.ICON_INFORMATION)
                 self.status = 'Backup Running'
-                self.logger.info(("Backup running: PID is {}".format(p.pid)))
+                self.logger.info("Backup running")
+                self.logger.debug(("Backup job PID is {}".format(p.pid)))
                 while p.poll() is None:
                     time.sleep(1)
                     if self.kill_thread:
