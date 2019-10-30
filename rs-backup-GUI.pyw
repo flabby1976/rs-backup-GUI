@@ -20,6 +20,7 @@ import logging.handlers
 
 
 class LoggerWriter(object):
+    # From https://stackoverflow.com/a/51612402
     def __init__(self, writer):
         self._writer = writer
         self._msg = ''
@@ -74,7 +75,7 @@ class BackupWorker(object):
         # Local configurable parameters
         self.config_file = os.path.expanduser('~/.rs-backup/rs-backup-GUI.cfg')
 
-        self.include_file = os.path.expanduser('c:/cygwin64/tmp/rs-backup-GUI.inc')
+        self.include_file = os.path.expanduser('c:/cygwin64/tmp/include')
 
         self.logger = logging.getLogger('Main_Logger')
         self.logger.setLevel(logging.DEBUG)
@@ -109,7 +110,7 @@ class BackupWorker(object):
                 backup_command = "rs-backup-run -v"
 
                 if self.force_flag:
-                    backup_command = backup_command + " -f"
+                    backup_command = backup_command + "f"
                     self.force_flag = False
 
                 backup_command = backup_command + " -r " + self.remote_host
@@ -132,7 +133,7 @@ class BackupWorker(object):
 
                 stime = time.time()
 
-                self.interface.notify('Backup Running', flags=wx.ICON_INFORMATION)
+                self.interface.notify('Backup Running', balloon=wx.ICON_INFORMATION)
                 self.status = 'Backup Running'
                 self.logger.info("Backup running")
                 self.logger.debug(("Backup job PID is {}".format(p.pid)))
@@ -140,7 +141,7 @@ class BackupWorker(object):
                     time.sleep(1)
                     if self.kill_thread:
                         self.logger.debug('Trying to kill rsync process ...')
-                        self.interface.notify('Aborting backup', flags=wx.ICON_ERROR)
+                        self.interface.notify('Aborting backup', balloon=wx.ICON_ERROR)
                         killcommand = ["c:/cygwin64/bin/bash", "-lc", "ps | grep " + str(p.pid) +
                                        " | awk '{print $1;}' |  while read pid; do /bin/kill -- -${pid}; done;"]
                         self.logger.debug(killcommand)
@@ -163,11 +164,11 @@ class BackupWorker(object):
 
             if returncode == 'OK':
                 self.logger.info('Backup completed successfully')
-                self.interface.notify('Backup completed successfully', flags=wx.ICON_INFORMATION)
+                self.interface.notify('Backup completed successfully', balloon=wx.ICON_INFORMATION)
                 self.logger.debug('Backup process log file follows - \n.........\n'+all_lines+'.........')
             else:
                 self.logger.error('Backup completed with errors')
-                self.interface.notify('Backup completed with errors', flags=wx.ICON_ERROR)
+                self.interface.notify('Backup completed with errors', balloon=wx.ICON_ERROR)
                 self.logger.error('Backup process log file follows - \n.........\n'+all_lines+'.........')
             
             if not self.kill_thread:
@@ -176,7 +177,7 @@ class BackupWorker(object):
                 nexttime = time.asctime(time.localtime(ntime + wtime))
                 self.status = 'Next backup at '+nexttime
                 self.logger.info('Waiting: Next backup at '+nexttime)
-                self.interface.notify('Next backup at '+nexttime, flags=None)
+                self.interface.notify('Next backup at '+nexttime, balloon=None)
                 for i in range(wtime):
                     n = datetime.datetime.now()
                     if n > self.next_rotate:
@@ -353,7 +354,7 @@ class TaskBarIcon(wx.adv.TaskBarIcon):
         wx.adv.TaskBarIcon.__init__(self)
         self.my_icon = wx.Icon(wx.IconLocation(TRAY_ICON))
         
-        self.notify('Initialising ...', flags=None)
+        self.notify('Initialising ...', balloon=None)
         self.Bind(wx.adv.EVT_TASKBAR_LEFT_DCLICK, self.on_debug)
         self.debug_window = DebugLogWindow(root, "Debug Window")
         self.worker = None
@@ -375,10 +376,13 @@ class TaskBarIcon(wx.adv.TaskBarIcon):
         
         return menu
 
-    def notify(self, text, flags=wx.ICON_INFORMATION):
-        if flags:
-            self.ShowBalloon('rs_backup', text, flags)
+    def notify(self, text, balloon=wx.ICON_INFORMATION):
         self.SetIcon(self.my_icon, 'rs_backup:\n'+text)
+        if balloon:
+            try:
+                self.ShowBalloon('rs_backup', text, balloon)
+            except wx._core.wxAssertionError as emessage:
+                print >> sys.stderr, emessage
 
     def on_debug(self, _):
         self.debug_window.Show(True)
