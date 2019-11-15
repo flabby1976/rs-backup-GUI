@@ -115,7 +115,7 @@ class BackupWorker(object):
         self.debug_window = DebugLogWindow(root, 'rs_backup logfile viewer', MAINLOGFILE)
         self.debug_window.SetIcon(self.interface.my_icon)
 
-        self.cygwin_root = r'C:\Cygwin64'
+        self.cygwin_root = None
 
         self.backup_thread = None
 
@@ -125,6 +125,7 @@ class BackupWorker(object):
         self.remote_user = None
         self.push_module = None
         self.rsync_options = None
+        self.log_level = None
 
     def configure(self):
 
@@ -141,26 +142,37 @@ class BackupWorker(object):
 
         if level == 'DEBUG':
             logging_level = logging.DEBUG
+            self.log_level = 4
         elif level == 'INFO':
             logging_level = logging.INFO
+            self.log_level = 3
         elif level == 'WARNING':
             logging_level = logging.WARNING
+            self.log_level = 2
         elif level == 'ERROR':
             logging_level = logging.ERROR
+            self.log_level = 1
         elif level == 'CRITICAL':
             logging_level = logging.CRITICAL
+            self.log_level = 1
         else:
             logging_level = logging.NOTSET
+            self.log_level = 0
 
         logger.setLevel(logging_level)
+
+        logger.debug(self.log_level)
 
         self.remote_host = config.get('rs-backup-run', 'remote_host')
         self.remote_user = config.get('rs-backup-run', 'remote_user')
         self.push_module = config.get('rs-backup-run', 'push_module')
         self.rsync_options = config.get('rs-backup-run', 'rsync_options')
+
         self.backup_freq = float(config.get('backup', 'frequency'))
 
-        logger.debug(config.get('cygwin', 'location'))
+        self.cygwin_root = config.get('cygwin', 'location')
+
+        logger.debug(self.cygwin_root)
 
         try_paths = config.items('Locations to backup')
         with open(self.cygwin_root + INCLUDE_FILE, 'wt') as temp:
@@ -245,7 +257,7 @@ class BackupWorker(object):
 
                 logger.debug("Temp file name = " + outfile.name)
 
-                backup_command = "rs-backup-run -v"
+                backup_command = "rs-backup-run -vp"
 
                 if self.force_flag:
                     backup_command = backup_command + "f"
@@ -256,6 +268,7 @@ class BackupWorker(object):
                 backup_command = backup_command + " --push-module=" + self.push_module
                 backup_command = backup_command + " -o " + self.rsync_options
                 backup_command = backup_command + " -i " + INCLUDE_FILE.replace('\\', '/')
+                backup_command = backup_command + " -l " + str(self.log_level)
 
                 logger.debug(backup_command)
 
