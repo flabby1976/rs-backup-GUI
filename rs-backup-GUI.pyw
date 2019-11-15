@@ -49,7 +49,7 @@ INCLUDE_FILE = r'\tmp\include'
 TRAY_ICON = 'Flag-red.ico'
 # Text for the 'about' popup
 MYNAME = "rs-backup-GUI: A GUI front-end for rs_backup_suite"
-MYVERSION = "Version 0.5 pre-release"
+MYVERSION = "Version 0.5"
 MYAUTHOR = "Copyright (C) 2018, 2019 Andrew Robinson"
 MYNOTICE = "\nThis program is free software: you can redistribute it and/or modify \n\
 it under the terms of the GNU General Public License as published by\n\
