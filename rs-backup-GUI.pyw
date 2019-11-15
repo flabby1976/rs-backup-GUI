@@ -112,7 +112,8 @@ class BackupWorker(object):
         self.force_flag = False
 
         self.interface = TaskBarIcon(menu_func=self.create_menu, double_click_func=self.on_debug)
-        self.debug_window = DebugLogWindow(root, "Debug Window", MAINLOGFILE)
+        self.debug_window = DebugLogWindow(root, 'rs_backup logfile viewer', MAINLOGFILE)
+        self.debug_window.SetIcon(self.interface.my_icon)
 
         self.cygwin_root = r'C:\Cygwin64'
 
@@ -187,7 +188,7 @@ class BackupWorker(object):
 
         menu = wx.Menu()
         self.interface.create_menu_item(menu, 'Set --force-run flag and re-try backup', self.on_force)
-        self.interface.create_menu_item(menu, 'Show debug log', self.on_debug)
+        self.interface.create_menu_item(menu, 'Show backup logfile', self.on_debug)
         menu.AppendSeparator()
         self.interface.create_menu_item(menu, 'About...', self.on_about)
         self.interface.create_menu_item(menu, 'Exit', self.on_exit)
@@ -199,6 +200,7 @@ class BackupWorker(object):
 
     def on_debug(self, _):
         self.debug_window.Show(True)
+        self.debug_window.Iconize(False)
         self.debug_window.readlog()
 
     @staticmethod
@@ -227,6 +229,7 @@ class BackupWorker(object):
             else:
                 logger.debug("IsIconInstalled = False")
             self.interface.Destroy()
+            time.sleep(2)
             self.interface = TaskBarIcon(menu_func=self.create_menu, double_click_func=self.on_debug)
 
     def backup_run(self):
