@@ -227,6 +227,10 @@ class BackupWorker(object):
         root.Destroy()
 
     def my_notify(self, text, balloon=wx.ICON_INFORMATION):
+
+        def restart_icon():
+            self.interface = TaskBarIcon(menu_func=self.create_menu, double_click_func=self.on_debug)
+
         try:
             self.interface.notify(text, balloon)
         except MyNotifyException as e:
@@ -241,8 +245,8 @@ class BackupWorker(object):
             else:
                 logger.debug("IsIconInstalled = False")
             self.interface.Destroy()
-            time.sleep(2)
-            self.interface = TaskBarIcon(menu_func=self.create_menu, double_click_func=self.on_debug)
+            wx.CallAfter(restart_icon)
+
 
     def backup_run(self):
 
@@ -257,7 +261,7 @@ class BackupWorker(object):
 
                 logger.debug("Temp file name = " + outfile.name)
 
-                backup_command = "rs-backup-run -vp"
+                backup_command = "rs-backup-run -v"
 
                 if self.force_flag:
                     backup_command = backup_command + "f"
@@ -424,7 +428,6 @@ logger.setLevel(logging.DEBUG)
 
 handler = logging.handlers.TimedRotatingFileHandler(MAINLOGFILE,
                                                     when="midnight",
-                                                    interval=1,
                                                     backupCount=7)
 
 formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
