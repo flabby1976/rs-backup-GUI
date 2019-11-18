@@ -253,6 +253,9 @@ class BackupWorker(object):
         startupinfo = subprocess.STARTUPINFO()
         startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
 
+        import re
+        ansi_escape = re.compile(r'\x1B[@-_][0-?]*[ -/]*[@-~]')
+
         while not self.kill_thread:
 
             self.configure()
@@ -324,6 +327,7 @@ class BackupWorker(object):
             else:
                 logger.error('Backup completed with errors')
                 self.my_notify('Backup completed with errors', balloon=wx.ICON_ERROR)
+                all_lines = ansi_escape.sub('', all_lines)
                 logger.error('Backup process log file follows - \n.........\n' + all_lines + '.........')
 
             if not self.kill_thread:
