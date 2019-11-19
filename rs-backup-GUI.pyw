@@ -111,9 +111,7 @@ class BackupWorker(object):
         self.kill_thread = False
         self.force_flag = False
 
-        self.interface = TaskBarIcon(menu_func=self.create_menu, double_click_func=self.on_debug)
-        self.debug_window = DebugLogWindow(root, 'rs_backup logfile viewer', MAINLOGFILE)
-        self.debug_window.SetIcon(self.interface.my_icon)
+        self.interface = None
 
         self.cygwin_root = None
 
@@ -126,6 +124,13 @@ class BackupWorker(object):
         self.push_module = None
         self.rsync_options = None
         self.log_level = None
+
+        self.start_interface()
+        self.debug_window = DebugLogWindow(root, 'rs_backup logfile viewer', MAINLOGFILE)
+        self.debug_window.SetIcon(self.interface.my_icon)
+
+    def start_interface(self):
+        self.interface = TaskBarIcon(menu_func=self.create_menu, double_click_func=self.on_debug)
 
     def configure(self):
 
@@ -228,13 +233,10 @@ class BackupWorker(object):
 
     def my_notify(self, text, balloon=wx.ICON_INFORMATION):
 
-        def restart_icon():
-            self.interface = TaskBarIcon(menu_func=self.create_menu, double_click_func=self.on_debug)
-
         try:
             self.interface.notify(text, balloon)
         except MyNotifyException as e:
-            logger.error("Notify fail:")
+            logger.error("Interface fail:")
             logger.error(str(e))
             if self.interface.IsOk():
                 logger.debug("IsOk = True")
@@ -244,8 +246,9 @@ class BackupWorker(object):
                 logger.debug("IsIconInstalled = True")
             else:
                 logger.debug("IsIconInstalled = False")
+            logger.error("Restarting interface")
             self.interface.Destroy()
-            wx.CallAfter(restart_icon)
+            wx.CallAfter(self.start_interface)
 
     def backup_run(self):
 
