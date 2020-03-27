@@ -290,7 +290,8 @@ class BackupWorker(object):
                                      stdin=devnull,
                                      stdout=outfile,
                                      stderr=subprocess.STDOUT,
-                                     startupinfo=startupinfo)
+                                     startupinfo=startupinfo,
+                                     creationflags=subprocess.IDLE_PRIORITY_CLASS)
 
                 stime = time.time()
 
