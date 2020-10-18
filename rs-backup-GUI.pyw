@@ -355,7 +355,7 @@ class BackupWorker(object):
         logger.debug('Waiting for backup thread to finish ....')
         self.backup_thread.join(20)
 
-        if not self.backup_thread.isAlive():
+        if not self.backup_thread.is_alive():
             logger.debug('Backup thread finished!')
         else:
             logger.warning("Woops! Backup thread didn't finish in time")
@@ -432,6 +432,8 @@ root.Show(False)  # Don't show it
 
 logger = logging.getLogger('Main_Logger')
 logger.setLevel(logging.DEBUG)
+
+os.makedirs(os.path.dirname(MAINLOGFILE), exist_ok=True)
 
 handler = logging.handlers.TimedRotatingFileHandler(MAINLOGFILE,
                                                     when="midnight",
