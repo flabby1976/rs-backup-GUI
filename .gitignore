@@ -7,5 +7,5 @@ build/
 *.manifest
 dist/
 testing/
-rs-backup-GUI.spec
+
 
