@@ -76,8 +76,12 @@ class TaskBarIcon(wx.adv.TaskBarIcon):
 
     def __init__(self, menu_func=None, double_click_func=None):
         wx.adv.TaskBarIcon.__init__(self)
-        self.my_icon = wx.Icon(wx.IconLocation(TRAY_ICON))
+        # self.my_icon = wx.Icon(wx.IconLocation(TRAY_ICON))
 
+        exeName = sys.executable
+        self.my_icon = wx.Icon( exeName, wx.BITMAP_TYPE_ICO )
+        # Attempt to get icon https://wiki.wxpython.org/LoadIconFromWin32Resources
+        
         self.notify('Initialising ...', balloon=None)
         self.menu_func = menu_func
 
