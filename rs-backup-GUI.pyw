@@ -207,6 +207,8 @@ class BackupWorker(object):
         self.interface.create_menu_item(menu, 'Set --force-run flag and re-try backup', self.on_force)
         self.interface.create_menu_item(menu, 'Show backup logfile', self.on_debug)
         menu.AppendSeparator()
+        self.interface.create_menu_item(menu, 'Edit config settings', self.on_congig_edit)
+        menu.AppendSeparator()
         self.interface.create_menu_item(menu, 'About...', self.on_about)
         self.interface.create_menu_item(menu, 'Exit', self.on_exit)
 
@@ -230,6 +232,9 @@ class BackupWorker(object):
         self.debug_window.shutdown()
         self.interface.Destroy()
         root.Destroy()
+
+    def on_congig_edit(self,_):
+        os.system("Notepad " + CONFIG_FILE)
 
     def my_notify(self, text, balloon=wx.ICON_INFORMATION):
 
