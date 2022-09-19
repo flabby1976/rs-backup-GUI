@@ -1,12 +1,10 @@
-import wx
-import wx.adv
-
 import sys
 import time
 
 import tempfile
 
 import os
+import re
 
 import subprocess
 
@@ -17,8 +15,10 @@ from configparser import RawConfigParser
 import logging
 import logging.handlers
 
+import wx
+import wx.adv
 
-class LoggerWriter(object):
+class LoggerWriter():
     # From https://stackoverflow.com/a/51612402
     def __init__(self, writer):
         self._writer = writer
@@ -45,8 +45,7 @@ CONFIG_FILE = os.path.expanduser('~/.rs-backup/rs-backup-GUI.cfg')
 MAINLOGFILE = os.path.expanduser('~/.rs-backup/rs-backup-GUI.log')
 # Location for
 INCLUDE_FILE = r'\tmp\include'
-# Icon file for the TaskBarIcon, in same directory as the executable
-TRAY_ICON = 'Flag-red.ico'
+
 # Text for the 'about' popup
 MYNAME = "rs-backup-GUI: A GUI front-end for rs_backup_suite"
 MYVERSION = "Version 0.6 + development"
@@ -76,12 +75,10 @@ class TaskBarIcon(wx.adv.TaskBarIcon):
 
     def __init__(self, menu_func=None, double_click_func=None):
         wx.adv.TaskBarIcon.__init__(self)
-        # self.my_icon = wx.Icon(wx.IconLocation(TRAY_ICON))
 
-        exeName = sys.executable
-        self.my_icon = wx.Icon( exeName, wx.BITMAP_TYPE_ICO )
-        # Attempt to get icon https://wiki.wxpython.org/LoadIconFromWin32Resources
-        
+        self.my_icon = wx.Icon(sys.executable, wx.BITMAP_TYPE_ICO )
+        # Attempt to get icon from executable https://wiki.wxpython.org/LoadIconFromWin32Resources
+        #
         self.notify('Initialising ...', balloon=None)
         self.menu_func = menu_func
 
@@ -93,6 +90,7 @@ class TaskBarIcon(wx.adv.TaskBarIcon):
         menu.Append(item)
         return item
 
+    # pylint: disable=invalid-name
     def CreatePopupMenu(self):
         # This is bound by default to right mouse key click on the icon
         popup = self.menu_func()
@@ -101,15 +99,14 @@ class TaskBarIcon(wx.adv.TaskBarIcon):
     def notify(self, text, balloon=wx.ICON_INFORMATION):
         self.SetIcon(self.my_icon, 'rs_backup:\n' + text)
         if balloon:
-            # noinspection PyUnresolvedReferences
-            # noinspection PyProtectedMember
+            # pylint: disable=protected-access
             try:
                 self.ShowBalloon('rs_backup', text, balloon)
-            except wx._core.wxAssertionError as e:
-                raise MyNotifyException(e)
+            except wx._core.wxAssertionError as ex:
+                raise MyNotifyException(ex) from ex
 
 
-class BackupWorker(object):
+class BackupWorker():
 
     def __init__(self):
         self.kill_thread = False
@@ -183,11 +180,31 @@ class BackupWorker(object):
 
         logger.debug(self.cygwin_root)
 
-        try_paths = config.items('Locations to backup')
+        try_paths = config.items('Locations to exclude')
         with open(self.cygwin_root + INCLUDE_FILE, 'wt') as temp:
             logger.debug(temp.name)
+            exclude_list = []
+            for try_path, _ in try_paths:
+
+                logger.debug(try_path)
+
+                drive, path_and_file = os.path.splitdrive(try_path)
+
+                fbits = ['cygdrive', drive.lower()[0]]
+                fbits.extend(path_and_file[1:].split(os.sep))
+                fbits.append('***')
+
+                logger.debug(fbits)
+                k = '- '
+                for bit in fbits:
+                    k = k + '/' + bit
+                if k not in exclude_list:
+                    exclude_list.append(k)
+                    print(k, file=temp)
+
+            try_paths = config.items('Locations to backup')
             include_list = []
-            for try_path, it in try_paths:
+            for try_path, _ in try_paths:
 
                 logger.debug(try_path)
 
@@ -208,7 +225,8 @@ class BackupWorker(object):
     def create_menu(self):
 
         menu = wx.Menu()
-        self.interface.create_menu_item(menu, 'Set --force-run flag and re-try backup', self.on_force)
+        self.interface.create_menu_item(menu,
+                        'Set --force-run flag and re-try backup', self.on_force)
         self.interface.create_menu_item(menu, 'Show backup logfile', self.on_debug)
         menu.AppendSeparator()
         self.interface.create_menu_item(menu, 'Edit config settings', self.on_congig_edit)
@@ -244,9 +262,9 @@ class BackupWorker(object):
 
         try:
             self.interface.notify(text, balloon)
-        except MyNotifyException as e:
+        except MyNotifyException as ex:
             logger.error("Interface fail:")
-            logger.error(str(e))
+            logger.error(str(ex))
             if self.interface.IsOk():
                 logger.debug("IsOk = True")
             else:
@@ -264,7 +282,6 @@ class BackupWorker(object):
         startupinfo = subprocess.STARTUPINFO()
         startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
 
-        import re
         ansi_escape = re.compile(r'\x1B[@-_][0-?]*[ -/]*[@-~]')
 
         while not self.kill_thread:
@@ -273,7 +290,7 @@ class BackupWorker(object):
 
             with tempfile.TemporaryFile(mode='w+t') as outfile:
 
-                logger.debug("Temp file name = " + outfile.name)
+                logger.debug("Temp file name = %s", outfile.name)
 
                 backup_command = "rs-backup-run -v"
 
@@ -295,7 +312,7 @@ class BackupWorker(object):
 
                 logger.debug(runcommand)
 
-                p = subprocess.Popen(runcommand,
+                backup_p = subprocess.Popen(runcommand,
                                      stdin=devnull,
                                      stdout=outfile,
                                      stderr=subprocess.STDOUT,
@@ -306,14 +323,15 @@ class BackupWorker(object):
 
                 self.my_notify('Backup Running', balloon=wx.ICON_INFORMATION)
                 logger.info("Backup running")
-                logger.debug(("Backup job PID is {}".format(p.pid)))
-                while p.poll() is None:
+                logger.debug(("Backup job PID is %s", backup_p.pid))
+                while backup_p.poll() is None:
                     time.sleep(1)
                     if self.kill_thread:
                         logger.debug('Trying to kill rsync process ...')
                         self.my_notify('Aborting backup', balloon=wx.ICON_ERROR)
-                        killcommand = [self.cygwin_root + r'\bin\bash', "-lc", "ps | grep " + str(p.pid) +
-                                       " | awk '{print $1;}' |  while read pid; do /bin/kill -- -${pid}; done;"]
+                        killcommand = [self.cygwin_root
+                        + r'\bin\bash', "-lc", "ps | grep " + str(backup_p.pid)
+                        + " | awk '{print $1;}' |  while read pid; do /bin/kill -- -${pid}; done;"]
                         logger.debug(killcommand)
                         subprocess.call(killcommand,
                                         stdin=devnull,
@@ -322,7 +340,7 @@ class BackupWorker(object):
                                         startupinfo=startupinfo)
 
                 ntime = time.time()
-                logger.debug(("Backup finished: elapsed time was: {}".format(ntime - stime)))
+                logger.debug(("Backup finished: elapsed time was: %s", ntime - stime))
                 all_lines = ''
                 try:
                     outfile.seek(0)
@@ -335,20 +353,22 @@ class BackupWorker(object):
             if returncode == 'OK':
                 logger.info('Backup completed successfully')
                 self.my_notify('Backup completed successfully', balloon=wx.ICON_INFORMATION)
-                logger.info('Backup process log file follows - \n.........\n' + all_lines + '.........')
+                logger.info(
+                    'Backup process log file follows - \n.........\n %s .........', all_lines)
             else:
                 logger.error('Backup completed with errors')
                 self.my_notify('Backup completed with errors', balloon=wx.ICON_ERROR)
                 all_lines = ansi_escape.sub('', all_lines)
-                logger.error('Backup process log file follows - \n.........\n' + all_lines + '.........')
+                logger.info(
+                    'Backup process log file follows - \n.........\n %s .........', all_lines)
 
             if not self.kill_thread:
                 ntime = time.time()
                 wtime = int(max(0.0, self.backup_freq - (ntime - stime)) + 0.5)
                 nexttime = time.asctime(time.localtime(ntime + wtime))
-                logger.info('Waiting: Next backup at ' + nexttime)
+                logger.info('Waiting: Next backup at %s', nexttime)
                 self.my_notify('Next backup at ' + nexttime, balloon=None)
-                for i in range(wtime):
+                for _ in range(wtime):
                     time.sleep(1)
                     if self.kill_thread or self.force_flag:
                         break
@@ -386,7 +406,8 @@ class DebugLogWindow(wx.Frame):
 
         style = wx.TE_MULTILINE | wx.TE_READONLY | wx.HSCROLL
         self.log = wx.TextCtrl(panel, wx.ID_ANY, style=style)
-        # noinspection PyUnresolvedReferences
+
+        # pylint: disable=no-member
         font1 = wx.Font(10, wx.MODERN, wx.NORMAL, wx.NORMAL, False, 'Consolas')
         self.log.SetFont(font1)
 
@@ -406,14 +427,14 @@ class DebugLogWindow(wx.Frame):
         sizer.Fit(self)
 
     @staticmethod
-    def _set_textctrl_size_by_chars(tc, w, h):
+    def _set_textctrl_size_by_chars(text_ctrl, width_chars, height_chars):
         # https://stackoverflow.com/questions/14269880/the-right-way-to-find-the-size-of-text-in-wxpython
-        font2 = tc.GetFont()
-        dc = wx.ScreenDC()
-        dc.SetFont(font2)
-        sz = dc.GetTextExtent('X')
-        sz = wx.Size(sz.x * w, sz.y * h)
-        tc.SetInitialSize(tc.GetSizeFromTextSize(sz))
+        font2 = text_ctrl.GetFont()
+        d_c = wx.ScreenDC()
+        d_c.SetFont(font2)
+        char_size = d_c.GetTextExtent('X')
+        text_ctrl_size = wx.Size(char_size.x * width_chars, char_size.y * height_chars)
+        text_ctrl.SetInitialSize(text_ctrl.GetSizeFromTextSize(text_ctrl_size))
 
     def readlog(self):
         self.log.Clear()
