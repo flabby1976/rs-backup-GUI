@@ -48,8 +48,8 @@ INCLUDE_FILE = r'\tmp\include'
 
 # Text for the 'about' popup
 MYNAME = "rs-backup-GUI: A GUI front-end for rs_backup_suite"
-MYVERSION = "Version 0.7"
-MYAUTHOR = "Copyright (C) 2022 Andrew Robinson"
+MYVERSION = "Version 0.7 + develop"
+MYAUTHOR = "Copyright (C) 2018-2022 Andrew Robinson"
 MYNOTICE = "\nThis program is free software: you can redistribute it and/or modify \n\
 it under the terms of the GNU General Public License as published by\n\
 the Free Software Foundation, either version 3 of the License, or\n\
